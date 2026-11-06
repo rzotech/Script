@@ -1,3 +1,7 @@
+-- ==============================================================================
+-- RZO HUB - Volleyball Legends (VBL) [WINDUI v1.0 OFFICIAL]
+-- Documentation: https://footagesus.github.io/WindUI-Docs/docs/installation
+-- ==============================================================================
 -- Wait for game to be fully loaded
 if not game:IsLoaded() then
     game.Loaded:Wait()
@@ -208,272 +212,11 @@ local function verifyVblKey(key)
     return false, data.message or "Invalid or expired VBL license key."
 end
 
-local function launchKeyGateway(onSuccess)
-    if not isFolderSafe(KEY_FOLDER) then
-        makeFolderSafe(KEY_FOLDER)
-    end
-
-    if isFileSafe(KEY_FILE) then
-        local saved = readFileSafe(KEY_FILE)
-        if saved and #saved > 6 then
-            local valid, data = verifyVblKey(saved)
-            if valid then
-                onSuccess(saved, data)
-                return
-            end
-        end
-    end
-
-    local parent = getSafeGuiParent()
-    if not parent then
-        warn("[RZO HUB] Cannot find valid GUI parent.")
-        onSuccess(nil, nil)
-        return
-    end
-
-    local existing = parent:FindFirstChild("RzoHub_VBL_KeyGate")
-    if existing then existing:Destroy() end
-
-    local lp = LocalPlayer or game:GetService("Players").LocalPlayer
-    local pg = lp and (lp:FindFirstChild("PlayerGui") or lp:WaitForChild("PlayerGui", 5))
-    if pg and pg ~= parent then
-        local old = pg:FindFirstChild("RzoHub_VBL_KeyGate")
-        if old then old:Destroy() end
-    end
-
-    local screenGui = Instance.new("ScreenGui")
-    screenGui.Name = "RzoHub_VBL_KeyGate"
-    screenGui.ResetOnSpawn = false
-    screenGui.DisplayOrder = 999999
-    
-    local parentOk = pcall(function()
-        screenGui.Parent = parent
-    end)
-    if not parentOk or not screenGui.Parent then
-        pcall(function()
-            screenGui.Parent = pg
-        end)
-    end
-
-    local mainFrame = Instance.new("Frame")
-    mainFrame.Name = "MainFrame"
-    mainFrame.Size = UDim2.new(0, 420, 0, 260)
-    mainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
-    mainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
-    mainFrame.BackgroundColor3 = Color3.fromRGB(12, 12, 18)
-    mainFrame.BorderSizePixel = 0
-    mainFrame.Active = true
-    mainFrame.Draggable = true
-    mainFrame.Parent = screenGui
-
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 14)
-    corner.Parent = mainFrame
-
-    local stroke = Instance.new("UIStroke")
-    stroke.Color = Color3.fromRGB(60, 60, 80)
-    stroke.Thickness = 1.6
-    stroke.Parent = mainFrame
-
-    local titleLabel = Instance.new("TextLabel")
-    titleLabel.Size = UDim2.new(1, -30, 0, 28)
-    titleLabel.Position = UDim2.new(0, 16, 0, 14)
-    titleLabel.BackgroundTransparency = 1
-    titleLabel.Text = "RZO HUB"
-    titleLabel.TextColor3 = Color3.fromRGB(250, 250, 255)
-    titleLabel.Font = Enum.Font.GothamBold
-    titleLabel.TextSize = 18
-    titleLabel.TextXAlignment = Enum.TextXAlignment.Left
-    titleLabel.Parent = mainFrame
-
-    local badge = Instance.new("TextLabel")
-    badge.Size = UDim2.new(0, 95, 0, 20)
-    badge.Position = UDim2.new(1, -110, 0, 16)
-    badge.BackgroundColor3 = Color3.fromRGB(240, 240, 245)
-    badge.TextColor3 = Color3.fromRGB(10, 10, 15)
-    badge.Text = "VBL GATEWAY"
-    badge.Font = Enum.Font.Code
-    badge.TextSize = 10
-    badge.Parent = mainFrame
-
-    local badgeCorner = Instance.new("UICorner")
-    badgeCorner.CornerRadius = UDim.new(0, 4)
-    badgeCorner.Parent = badge
-
-    local subLabel = Instance.new("TextLabel")
-    subLabel.Size = UDim2.new(1, -32, 0, 18)
-    subLabel.Position = UDim2.new(0, 16, 0, 44)
-    subLabel.BackgroundTransparency = 1
-    subLabel.Text = "Masukkan key VBL 24-jam Anda untuk otentikasi"
-    subLabel.TextColor3 = Color3.fromRGB(150, 150, 170)
-    subLabel.Font = Enum.Font.Gotham
-    subLabel.TextSize = 12
-    subLabel.TextXAlignment = Enum.TextXAlignment.Left
-    subLabel.Parent = mainFrame
-
-    local inputContainer = Instance.new("Frame")
-    inputContainer.Size = UDim2.new(1, -32, 0, 40)
-    inputContainer.Position = UDim2.new(0, 16, 0, 72)
-    inputContainer.BackgroundTransparency = 1
-    inputContainer.Parent = mainFrame
-
-    local inputBox = Instance.new("TextBox")
-    inputBox.Size = UDim2.new(1, -76, 1, 0)
-    inputBox.Position = UDim2.new(0, 0, 0, 0)
-    inputBox.BackgroundColor3 = Color3.fromRGB(6, 6, 10)
-    inputBox.TextColor3 = Color3.fromRGB(245, 245, 255)
-    inputBox.Text = ""
-    inputBox.PlaceholderText = "" -- KOSONG BERSIH TANPA TEKS
-    inputBox.ClearTextOnFocus = true
-    inputBox.Font = Enum.Font.Code
-    inputBox.TextSize = 13
-    inputBox.Parent = inputContainer
-
-    local inputCorner = Instance.new("UICorner")
-    inputCorner.CornerRadius = UDim.new(0, 8)
-    inputCorner.Parent = inputBox
-
-    local inputStroke = Instance.new("UIStroke")
-    inputStroke.Color = Color3.fromRGB(50, 50, 70)
-    inputStroke.Thickness = 1.2
-    inputStroke.Parent = inputBox
-
-    inputBox.Focused:Connect(function()
-        inputBox.Text = ""
-    end)
-
-    local pasteBtn = Instance.new("TextButton")
-    pasteBtn.Size = UDim2.new(0, 68, 1, 0)
-    pasteBtn.Position = UDim2.new(1, -68, 0, 0)
-    pasteBtn.BackgroundColor3 = Color3.fromRGB(25, 25, 38)
-    pasteBtn.TextColor3 = Color3.fromRGB(240, 240, 255)
-    pasteBtn.Text = "PASTE"
-    pasteBtn.Font = Enum.Font.GothamBold
-    pasteBtn.TextSize = 12
-    pasteBtn.Parent = inputContainer
-
-    local pasteCorner = Instance.new("UICorner")
-    pasteCorner.CornerRadius = UDim.new(0, 8)
-    pasteCorner.Parent = pasteBtn
-
-    local pasteStroke = Instance.new("UIStroke")
-    pasteStroke.Color = Color3.fromRGB(70, 70, 100)
-    pasteStroke.Thickness = 1
-    pasteStroke.Parent = pasteBtn
-
-    local statusLabel = Instance.new("TextLabel")
-    statusLabel.Size = UDim2.new(1, -32, 0, 20)
-    statusLabel.Position = UDim2.new(0, 16, 0, 120)
-    statusLabel.BackgroundTransparency = 1
-    statusLabel.Text = "Status: Siap memasukkan key"
-    statusLabel.TextColor3 = Color3.fromRGB(140, 140, 160)
-    statusLabel.Font = Enum.Font.Gotham
-    statusLabel.TextSize = 11
-    statusLabel.TextXAlignment = Enum.TextXAlignment.Left
-    statusLabel.Parent = mainFrame
-
-    pasteBtn.MouseButton1Click:Connect(function()
-        local clip = getClipboardSafe()
-        if clip and #clip > 4 then
-            inputBox.Text = string.gsub(clip, "%s+", "")
-            statusLabel.Text = "Key berhasil di-paste dari clipboard!"
-            statusLabel.TextColor3 = Color3.fromRGB(130, 220, 255)
-        else
-            inputBox.Text = ""
-            statusLabel.Text = "Clipboard kosong atau tidak didukung executor."
-            statusLabel.TextColor3 = Color3.fromRGB(240, 180, 80)
-        end
-    end)
-
-    local submitBtn = Instance.new("TextButton")
-    submitBtn.Size = UDim2.new(1, -32, 0, 38)
-    submitBtn.Position = UDim2.new(0, 16, 0, 150)
-    submitBtn.BackgroundColor3 = Color3.fromRGB(245, 245, 255)
-    submitBtn.TextColor3 = Color3.fromRGB(10, 10, 15)
-    submitBtn.Text = "Verify & Engage"
-    submitBtn.Font = Enum.Font.GothamBold
-    submitBtn.TextSize = 13
-    submitBtn.Parent = mainFrame
-
-    local submitCorner = Instance.new("UICorner")
-    submitCorner.CornerRadius = UDim.new(0, 8)
-    submitCorner.Parent = submitBtn
-
-    local getKeyBtn = Instance.new("TextButton")
-    getKeyBtn.Size = UDim2.new(0.48, -20, 0, 30)
-    getKeyBtn.Position = UDim2.new(0, 16, 0, 200)
-    getKeyBtn.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
-    getKeyBtn.TextColor3 = Color3.fromRGB(220, 220, 235)
-    getKeyBtn.Text = "Get Key (Copy Link)"
-    getKeyBtn.Font = Enum.Font.GothamMedium
-    getKeyBtn.TextSize = 11
-    getKeyBtn.Parent = mainFrame
-
-    local getKeyCorner = Instance.new("UICorner")
-    getKeyCorner.CornerRadius = UDim.new(0, 6)
-    getKeyCorner.Parent = getKeyBtn
-
-    local discordBtn = Instance.new("TextButton")
-    discordBtn.Size = UDim2.new(0.48, -12, 0, 30)
-    discordBtn.Position = UDim2.new(0.52, 0, 0, 200)
-    discordBtn.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
-    discordBtn.TextColor3 = Color3.fromRGB(150, 170, 255)
-    discordBtn.Text = "Join Discord"
-    discordBtn.Font = Enum.Font.GothamMedium
-    discordBtn.TextSize = 11
-    discordBtn.Parent = mainFrame
-
-    local discordCorner = Instance.new("UICorner")
-    discordCorner.CornerRadius = UDim.new(0, 6)
-    discordCorner.Parent = discordBtn
-
-    getKeyBtn.MouseButton1Click:Connect(function()
-        setClipboardSafe(GET_KEY_URL)
-        statusLabel.Text = "Link copied! Selesaikan LootLabs untuk claim key."
-        statusLabel.TextColor3 = Color3.fromRGB(130, 200, 255)
-    end)
-
-    discordBtn.MouseButton1Click:Connect(function()
-        setClipboardSafe(DISCORD_URL)
-        statusLabel.Text = "Discord invite copied to clipboard!"
-        statusLabel.TextColor3 = Color3.fromRGB(150, 170, 255)
-    end)
-
-    local function handleKeySubmission()
-        local inputKey = string.gsub(inputBox.Text, "%s+", "")
-        if #inputKey < 6 then
-            statusLabel.Text = "Silakan masukkan atau paste key VBL Anda."
-            statusLabel.TextColor3 = Color3.fromRGB(255, 90, 100)
-            return
-        end
-
-        statusLabel.Text = "Authenticating with RZO HUB..."
-        statusLabel.TextColor3 = Color3.fromRGB(220, 220, 240)
-
-        task.spawn(function()
-            local valid, res = verifyVblKey(inputKey)
-            if valid then
-                statusLabel.Text = "Key Valid! (+24h Active) Loading RZO HUB..."
-                statusLabel.TextColor3 = Color3.fromRGB(50, 220, 130)
-                writeFileSafe(KEY_FILE, inputKey)
-                task.wait(0.4)
-                screenGui:Destroy()
-                onSuccess(inputKey, res)
-            else
-                local msg = (type(res) == "table" and res.message) or tostring(res)
-                statusLabel.Text = msg
-                statusLabel.TextColor3 = Color3.fromRGB(255, 80, 90)
-            end
-        end)
-    end
-
-    submitBtn.MouseButton1Click:Connect(handleKeySubmission)
-    inputBox.FocusLost:Connect(function(enterPressed)
-        if enterPressed then
-            handleKeySubmission()
-        end
-    end)
-end
+-- ==============================================================================
+-- RZO HUB - Volleyball Legends (VBL)
+-- UI Framework: WindUI (https://footagesus.github.io/WindUI-Docs/docs/installation)
+-- CHANGELOG: ADDING VOLLEYBALLLEGENDS (Migrated to WindUI v1.0)
+-- ==============================================================================
 
 local function loadWindUI()
     local urls = {
@@ -495,10 +238,24 @@ local function loadWindUI()
             end
         end
     end
-    error("[RZO HUB] Failed to download WindUI library.")
+    error("[RZO HUB] Failed to download WindUI library from all mirrors.")
 end
 
-local function LoadMainHub()
+-- Ensure legacy saved key is synced to WindUI key store
+pcall(function()
+    local hwid = getHWID()
+    local windUiKeyDir = "RzoHub/VolleyballLegends"
+    local windUiKeyFile = windUiKeyDir .. "/" .. hwid .. ".key"
+    if not isFolderSafe("RzoHub") then makeFolderSafe("RzoHub") end
+    if not isFolderSafe(windUiKeyDir) then makeFolderSafe(windUiKeyDir) end
+    if not isFileSafe(windUiKeyFile) and isFileSafe(KEY_FILE) then
+        local leg = readFileSafe(KEY_FILE)
+        if leg and #leg > 5 then
+            writeFileSafe(windUiKeyFile, leg)
+        end
+    end
+end)
+
 local WindUI = loadWindUI()
 
 local Window = WindUI:CreateWindow({
@@ -511,6 +268,21 @@ local Window = WindUI:CreateWindow({
     Theme = "Dark",
     ToggleKey = Enum.KeyCode.RightControl,
     Resizable = true,
+    KeySystem = {
+        Title = "RZO HUB - Key Verification",
+        Note = "Selesaikan quest LootLabs di website untuk mendapatkan key 24 jam",
+        URL = GET_KEY_URL,
+        SaveKey = true,
+        KeyValidator = function(enteredKey)
+            if not enteredKey or #enteredKey < 5 then return false end
+            local valid, data = verifyVblKey(enteredKey)
+            if valid then
+                writeFileSafe(KEY_FILE, enteredKey)
+                return true
+            end
+            return false
+        end,
+    }
 })
 
 local function notify(titleOrTable, content, duration)
@@ -2795,37 +2567,3 @@ task.defer(function()
 end)
 
 notify("RZO HUB", "ADDING VOLLEYBALLLEGENDS - Loaded successfully!", 3)
-end
-
--- Launch VBL License Authentication Gateway asynchronously
-task.spawn(function()
-    print("[RZO HUB] Initializing VBL client gateway...")
-    local ok, err = pcall(function()
-        launchKeyGateway(function(key, data)
-            local hubOk, hubErr = pcall(LoadMainHub)
-            if not hubOk then
-                warn("[RZO HUB ERROR] Failed to load main hub:", tostring(hubErr))
-                local parent = getSafeGuiParent()
-                if parent then
-                    local fallbackGui = Instance.new("ScreenGui")
-                    fallbackGui.Name = "RzoHub_ErrorNotice"
-                    fallbackGui.DisplayOrder = 999999
-                    fallbackGui.Parent = parent
-                    local label = Instance.new("TextLabel")
-                    label.Size = UDim2.new(0, 420, 0, 90)
-                    label.Position = UDim2.new(0.5, -210, 0.2, 0)
-                    label.BackgroundColor3 = Color3.fromRGB(35, 10, 15)
-                    label.TextColor3 = Color3.fromRGB(255, 120, 120)
-                    label.Text = "[RZO HUB LOAD ERROR]\n" .. tostring(hubErr)
-                    label.TextWrapped = true
-                    label.Font = Enum.Font.Code
-                    label.TextSize = 12
-                    label.Parent = fallbackGui
-                end
-            end
-        end)
-    end)
-    if not ok then
-        warn("[RZO HUB CRITICAL ERROR] Gateway failed to launch:", tostring(err))
-    end
-end)
