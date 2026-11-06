@@ -37,18 +37,35 @@ local function safeClosure(fn)
 end
 
 local function getSafeGuiParent()
-    local ok, res = pcall(function()
-        if gethui and type(gethui) == "function" then
-            return gethui()
-        end
-        local cg = game:GetService("CoreGui")
-        if cg and typeof(cg) == "Instance" then
-            return cg
-        end
+    local lp = Players.LocalPlayer or game:GetService("Players").LocalPlayer
+    local playerGui = lp and (lp:FindFirstChild("PlayerGui") or lp:WaitForChild("PlayerGui", 5))
+
+    if gethui and type(gethui) == "function" then
+        local ok, h = pcall(gethui)
+        if ok and h then return h end
+    end
+
+    local ok, cg = pcall(function()
+        local core = game:GetService("CoreGui")
+        local test = Instance.new("Folder")
+        test.Parent = core
+        test:Destroy()
+        return core
     end)
-    if ok and res then return res end
-    local lp = game:GetService("Players").LocalPlayer
-    return lp and lp:WaitForChild("PlayerGui")
+    if ok and cg then return cg end
+
+    return playerGui
+end
+
+local function getClipboardSafe()
+    local fn = getclipboard or (Clipboard and Clipboard.get) or (syn and syn.read_clipboard)
+    if fn and type(fn) == "function" then
+        local ok, res = pcall(fn)
+        if ok and res and tostring(res) ~= "" then
+            return tostring(res)
+        end
+    end
+    return nil
 end
 
 local function setClipboardSafe(text)
@@ -181,7 +198,7 @@ local function launchKeyGateway(onSuccess)
 
     if isFileSafe(KEY_FILE) then
         local saved = readFileSafe(KEY_FILE)
-        if saved and #saved > 8 then
+        if saved and #saved > 6 then
             local valid, data = verifyVblKey(saved)
             if valid then
                 onSuccess(saved, data)
@@ -200,16 +217,32 @@ local function launchKeyGateway(onSuccess)
     local existing = parent:FindFirstChild("RzoHub_VBL_KeyGate")
     if existing then existing:Destroy() end
 
+    local lp = LocalPlayer or game:GetService("Players").LocalPlayer
+    local pg = lp and (lp:FindFirstChild("PlayerGui") or lp:WaitForChild("PlayerGui", 5))
+    if pg and pg ~= parent then
+        local old = pg:FindFirstChild("RzoHub_VBL_KeyGate")
+        if old then old:Destroy() end
+    end
+
     local screenGui = Instance.new("ScreenGui")
     screenGui.Name = "RzoHub_VBL_KeyGate"
     screenGui.ResetOnSpawn = false
     screenGui.DisplayOrder = 999999
-    screenGui.Parent = parent
+    
+    local parentOk = pcall(function()
+        screenGui.Parent = parent
+    end)
+    if not parentOk or not screenGui.Parent then
+        pcall(function()
+            screenGui.Parent = pg
+        end)
+    end
 
     local mainFrame = Instance.new("Frame")
     mainFrame.Name = "MainFrame"
-    mainFrame.Size = UDim2.new(0, 420, 0, 270)
-    mainFrame.Position = UDim2.new(0.5, -210, 0.5, -135)
+    mainFrame.Size = UDim2.new(0, 420, 0, 260)
+    mainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+    mainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
     mainFrame.BackgroundColor3 = Color3.fromRGB(12, 12, 18)
     mainFrame.BorderSizePixel = 0
     mainFrame.Active = true
@@ -221,13 +254,13 @@ local function launchKeyGateway(onSuccess)
     corner.Parent = mainFrame
 
     local stroke = Instance.new("UIStroke")
-    stroke.Color = Color3.fromRGB(60, 60, 75)
-    stroke.Thickness = 1.5
+    stroke.Color = Color3.fromRGB(60, 60, 80)
+    stroke.Thickness = 1.6
     stroke.Parent = mainFrame
 
     local titleLabel = Instance.new("TextLabel")
-    titleLabel.Size = UDim2.new(1, -30, 0, 30)
-    titleLabel.Position = UDim2.new(0, 16, 0, 16)
+    titleLabel.Size = UDim2.new(1, -30, 0, 28)
+    titleLabel.Position = UDim2.new(0, 16, 0, 14)
     titleLabel.BackgroundTransparency = 1
     titleLabel.Text = "RZO HUB"
     titleLabel.TextColor3 = Color3.fromRGB(250, 250, 255)
@@ -238,7 +271,7 @@ local function launchKeyGateway(onSuccess)
 
     local badge = Instance.new("TextLabel")
     badge.Size = UDim2.new(0, 95, 0, 20)
-    badge.Position = UDim2.new(1, -110, 0, 20)
+    badge.Position = UDim2.new(1, -110, 0, 16)
     badge.BackgroundColor3 = Color3.fromRGB(240, 240, 245)
     badge.TextColor3 = Color3.fromRGB(10, 10, 15)
     badge.Text = "VBL GATEWAY"
@@ -251,51 +284,93 @@ local function launchKeyGateway(onSuccess)
     badgeCorner.Parent = badge
 
     local subLabel = Instance.new("TextLabel")
-    subLabel.Size = UDim2.new(1, -32, 0, 20)
-    subLabel.Position = UDim2.new(0, 16, 0, 46)
+    subLabel.Size = UDim2.new(1, -32, 0, 18)
+    subLabel.Position = UDim2.new(0, 16, 0, 44)
     subLabel.BackgroundTransparency = 1
-    subLabel.Text = "Enter your 24-hour VBL access key to authenticate"
+    subLabel.Text = "Masukkan key VBL 24-jam Anda untuk otentikasi"
     subLabel.TextColor3 = Color3.fromRGB(150, 150, 170)
     subLabel.Font = Enum.Font.Gotham
     subLabel.TextSize = 12
     subLabel.TextXAlignment = Enum.TextXAlignment.Left
     subLabel.Parent = mainFrame
 
+    local inputContainer = Instance.new("Frame")
+    inputContainer.Size = UDim2.new(1, -32, 0, 40)
+    inputContainer.Position = UDim2.new(0, 16, 0, 72)
+    inputContainer.BackgroundTransparency = 1
+    inputContainer.Parent = mainFrame
+
     local inputBox = Instance.new("TextBox")
-    inputBox.Size = UDim2.new(1, -32, 0, 42)
-    inputBox.Position = UDim2.new(0, 16, 0, 80)
+    inputBox.Size = UDim2.new(1, -76, 1, 0)
+    inputBox.Position = UDim2.new(0, 0, 0, 0)
     inputBox.BackgroundColor3 = Color3.fromRGB(6, 6, 10)
     inputBox.TextColor3 = Color3.fromRGB(245, 245, 255)
-    inputBox.PlaceholderText = "VBL-XXXX-XXXX-XXXX-XXXX"
-    inputBox.PlaceholderColor3 = Color3.fromRGB(80, 80, 100)
+    inputBox.Text = ""
+    inputBox.PlaceholderText = "" -- KOSONG BERSIH TANPA TEKS
+    inputBox.ClearTextOnFocus = true
     inputBox.Font = Enum.Font.Code
-    inputBox.TextSize = 14
-    inputBox.ClearTextOnFocus = false
-    inputBox.Parent = mainFrame
+    inputBox.TextSize = 13
+    inputBox.Parent = inputContainer
 
     local inputCorner = Instance.new("UICorner")
     inputCorner.CornerRadius = UDim.new(0, 8)
     inputCorner.Parent = inputBox
 
     local inputStroke = Instance.new("UIStroke")
-    inputStroke.Color = Color3.fromRGB(40, 40, 55)
-    inputStroke.Thickness = 1
+    inputStroke.Color = Color3.fromRGB(50, 50, 70)
+    inputStroke.Thickness = 1.2
     inputStroke.Parent = inputBox
 
+    inputBox.Focused:Connect(function()
+        inputBox.Text = ""
+    end)
+
+    local pasteBtn = Instance.new("TextButton")
+    pasteBtn.Size = UDim2.new(0, 68, 1, 0)
+    pasteBtn.Position = UDim2.new(1, -68, 0, 0)
+    pasteBtn.BackgroundColor3 = Color3.fromRGB(25, 25, 38)
+    pasteBtn.TextColor3 = Color3.fromRGB(240, 240, 255)
+    pasteBtn.Text = "PASTE"
+    pasteBtn.Font = Enum.Font.GothamBold
+    pasteBtn.TextSize = 12
+    pasteBtn.Parent = inputContainer
+
+    local pasteCorner = Instance.new("UICorner")
+    pasteCorner.CornerRadius = UDim.new(0, 8)
+    pasteCorner.Parent = pasteBtn
+
+    local pasteStroke = Instance.new("UIStroke")
+    pasteStroke.Color = Color3.fromRGB(70, 70, 100)
+    pasteStroke.Thickness = 1
+    pasteStroke.Parent = pasteBtn
+
     local statusLabel = Instance.new("TextLabel")
-    statusLabel.Size = UDim2.new(1, -32, 0, 22)
-    statusLabel.Position = UDim2.new(0, 16, 0, 130)
+    statusLabel.Size = UDim2.new(1, -32, 0, 20)
+    statusLabel.Position = UDim2.new(0, 16, 0, 120)
     statusLabel.BackgroundTransparency = 1
-    statusLabel.Text = "Status: Awaiting key input"
+    statusLabel.Text = "Status: Siap memasukkan key"
     statusLabel.TextColor3 = Color3.fromRGB(140, 140, 160)
     statusLabel.Font = Enum.Font.Gotham
     statusLabel.TextSize = 11
     statusLabel.TextXAlignment = Enum.TextXAlignment.Left
     statusLabel.Parent = mainFrame
 
+    pasteBtn.MouseButton1Click:Connect(function()
+        local clip = getClipboardSafe()
+        if clip and #clip > 4 then
+            inputBox.Text = string.gsub(clip, "%s+", "")
+            statusLabel.Text = "Key berhasil di-paste dari clipboard!"
+            statusLabel.TextColor3 = Color3.fromRGB(130, 220, 255)
+        else
+            inputBox.Text = ""
+            statusLabel.Text = "Clipboard kosong atau tidak didukung executor."
+            statusLabel.TextColor3 = Color3.fromRGB(240, 180, 80)
+        end
+    end)
+
     local submitBtn = Instance.new("TextButton")
     submitBtn.Size = UDim2.new(1, -32, 0, 38)
-    submitBtn.Position = UDim2.new(0, 16, 0, 160)
+    submitBtn.Position = UDim2.new(0, 16, 0, 150)
     submitBtn.BackgroundColor3 = Color3.fromRGB(245, 245, 255)
     submitBtn.TextColor3 = Color3.fromRGB(10, 10, 15)
     submitBtn.Text = "Verify & Engage"
@@ -308,8 +383,8 @@ local function launchKeyGateway(onSuccess)
     submitCorner.Parent = submitBtn
 
     local getKeyBtn = Instance.new("TextButton")
-    getKeyBtn.Size = UDim2.new(0.48, -20, 0, 32)
-    getKeyBtn.Position = UDim2.new(0, 16, 0, 210)
+    getKeyBtn.Size = UDim2.new(0.48, -20, 0, 30)
+    getKeyBtn.Position = UDim2.new(0, 16, 0, 200)
     getKeyBtn.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
     getKeyBtn.TextColor3 = Color3.fromRGB(220, 220, 235)
     getKeyBtn.Text = "Get Key (Copy Link)"
@@ -322,8 +397,8 @@ local function launchKeyGateway(onSuccess)
     getKeyCorner.Parent = getKeyBtn
 
     local discordBtn = Instance.new("TextButton")
-    discordBtn.Size = UDim2.new(0.48, -12, 0, 32)
-    discordBtn.Position = UDim2.new(0.52, 0, 0, 210)
+    discordBtn.Size = UDim2.new(0.48, -12, 0, 30)
+    discordBtn.Position = UDim2.new(0.52, 0, 0, 200)
     discordBtn.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
     discordBtn.TextColor3 = Color3.fromRGB(150, 170, 255)
     discordBtn.Text = "Join Discord"
@@ -337,7 +412,7 @@ local function launchKeyGateway(onSuccess)
 
     getKeyBtn.MouseButton1Click:Connect(function()
         setClipboardSafe(GET_KEY_URL)
-        statusLabel.Text = "Link copied! Complete LootLabs tasks to claim key."
+        statusLabel.Text = "Link copied! Selesaikan LootLabs untuk claim key."
         statusLabel.TextColor3 = Color3.fromRGB(130, 200, 255)
     end)
 
@@ -347,8 +422,14 @@ local function launchKeyGateway(onSuccess)
         statusLabel.TextColor3 = Color3.fromRGB(150, 170, 255)
     end)
 
-    submitBtn.MouseButton1Click:Connect(function()
-        local inputKey = inputBox.Text
+    local function handleKeySubmission()
+        local inputKey = string.gsub(inputBox.Text, "%s+", "")
+        if #inputKey < 6 then
+            statusLabel.Text = "Silakan masukkan atau paste key VBL Anda."
+            statusLabel.TextColor3 = Color3.fromRGB(255, 90, 100)
+            return
+        end
+
         statusLabel.Text = "Authenticating with RZO HUB..."
         statusLabel.TextColor3 = Color3.fromRGB(220, 220, 240)
 
@@ -357,18 +438,25 @@ local function launchKeyGateway(onSuccess)
             if valid then
                 statusLabel.Text = "Key Valid! (+24h Active) Loading RZO HUB..."
                 statusLabel.TextColor3 = Color3.fromRGB(50, 220, 130)
-                writeFileSafe(KEY_FILE, string.gsub(inputKey, "%s+", ""))
-                task.wait(0.5)
+                writeFileSafe(KEY_FILE, inputKey)
+                task.wait(0.4)
                 screenGui:Destroy()
                 onSuccess(inputKey, res)
             else
-                statusLabel.Text = tostring(res)
+                local msg = (type(res) == "table" and res.message) or tostring(res)
+                statusLabel.Text = msg
                 statusLabel.TextColor3 = Color3.fromRGB(255, 80, 90)
             end
         end)
+    end
+
+    submitBtn.MouseButton1Click:Connect(handleKeySubmission)
+    inputBox.FocusLost:Connect(function(enterPressed)
+        if enterPressed then
+            handleKeySubmission()
+        end
     end)
 end
-
 
 local function LoadMainHub()
 local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
@@ -409,41 +497,55 @@ end
 -- RZO HUB - FLOATING TOGGLE BUTTON & REAL-TIME PERFORMANCE OVERLAY
 -- ==============================================================================
 
-local safeParent = getSafeGuiParent()
-
--- 1. Floating Draggable Toggle Button
 local function createFloatingToggle()
-    if not safeParent then return end
-    local existing = safeParent:FindFirstChild("RzoHub_FloatingToggle")
+    local parent = getSafeGuiParent()
+    if not parent then return end
+
+    local existing = parent:FindFirstChild("RzoHub_FloatingToggle")
     if existing then existing:Destroy() end
+
+    local lp = LocalPlayer or game:GetService("Players").LocalPlayer
+    local pg = lp and (lp:FindFirstChild("PlayerGui") or lp:WaitForChild("PlayerGui", 5))
+    if pg and pg ~= parent then
+        local old = pg:FindFirstChild("RzoHub_FloatingToggle")
+        if old then old:Destroy() end
+    end
 
     local screenGui = Instance.new("ScreenGui")
     screenGui.Name = "RzoHub_FloatingToggle"
     screenGui.ResetOnSpawn = false
-    screenGui.DisplayOrder = 99999
-    screenGui.Parent = safeParent
+    screenGui.DisplayOrder = 999999
+    
+    local parentOk = pcall(function()
+        screenGui.Parent = parent
+    end)
+    if not parentOk or not screenGui.Parent then
+        pcall(function()
+            screenGui.Parent = pg
+        end)
+    end
 
     local toggleBtn = Instance.new("TextButton")
     toggleBtn.Name = "ToggleButton"
-    toggleBtn.Size = UDim2.new(0, 52, 0, 52)
+    toggleBtn.Size = UDim2.new(0, 56, 0, 56)
     toggleBtn.Position = UDim2.new(0, 18, 0.45, 0)
-    toggleBtn.BackgroundColor3 = Color3.fromRGB(15, 15, 22)
-    toggleBtn.BackgroundTransparency = 0.2
+    toggleBtn.BackgroundColor3 = Color3.fromRGB(15, 15, 24)
+    toggleBtn.BackgroundTransparency = 0.1
     toggleBtn.Text = "RZO"
-    toggleBtn.TextColor3 = Color3.fromRGB(245, 245, 255)
+    toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
     toggleBtn.Font = Enum.Font.GothamBold
-    toggleBtn.TextSize = 13
+    toggleBtn.TextSize = 14
     toggleBtn.Active = true
     toggleBtn.AutoButtonColor = true
     toggleBtn.Parent = screenGui
 
     local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 14)
+    corner.CornerRadius = UDim.new(0, 16)
     corner.Parent = toggleBtn
 
     local stroke = Instance.new("UIStroke")
-    stroke.Color = Color3.fromRGB(70, 70, 90)
-    stroke.Thickness = 1.6
+    stroke.Color = Color3.fromRGB(90, 90, 130)
+    stroke.Thickness = 2
     stroke.Parent = toggleBtn
 
     local dragging = false
@@ -476,13 +578,22 @@ local function createFloatingToggle()
     end)
 
     toggleBtn.MouseButton1Click:Connect(function()
-        Library:Toggle()
+        pcall(function()
+            if Library and Library.Toggle then
+                Library:Toggle()
+            end
+        end)
     end)
 
     return toggleBtn
 end
 
 pcall(createFloatingToggle)
+
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(1)
+    pcall(createFloatingToggle)
+end)
 
 -- Explicitly purge all performance overlays & lock/keybind overlays (Keep ONLY RZO toggle button)
 pcall(function()
@@ -2716,10 +2827,37 @@ pcall(function()
     end
 end)
 
-notify("RZO HUB", "ADDING VOLLEYBALLLEGENDS - Loaded successfully!", 3)
+-- Force open Obsidian menu on load
+    task.defer(function()
+        task.wait(0.25)
+        pcall(function()
+            if Library and Library.Toggle then
+                Library:Toggle(true)
+            end
+        end)
+    end)
+
+    notify("RZO HUB", "ADDING VOLLEYBALLLEGENDS - Loaded successfully!", 3)
 end
 
--- Launch VBL License Authentication Gateway
+-- Launch VBL License Authentication Gateway with error protection
 launchKeyGateway(function(key, data)
-    LoadMainHub()
+    local ok, err = pcall(LoadMainHub)
+    if not ok then
+        warn("[RZO HUB ERROR] Failed to load main hub:", tostring(err))
+        local parent = getSafeGuiParent()
+        if parent then
+            local fallbackGui = Instance.new("ScreenGui")
+            fallbackGui.Name = "RzoHub_ErrorNotice"
+            fallbackGui.Parent = parent
+            local label = Instance.new("TextLabel")
+            label.Size = UDim2.new(0, 400, 0, 80)
+            label.Position = UDim2.new(0.5, -200, 0.2, 0)
+            label.BackgroundColor3 = Color3.fromRGB(30, 0, 0)
+            label.TextColor3 = Color3.fromRGB(255, 100, 100)
+            label.Text = "[RZO HUB ERROR]\n" .. tostring(err)
+            label.TextWrapped = true
+            label.Parent = fallbackGui
+        end
+    end
 end)
