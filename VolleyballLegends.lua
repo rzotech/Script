@@ -475,58 +475,59 @@ local function launchKeyGateway(onSuccess)
     end)
 end
 
-local function loadObsidianComponent(path)
+local function loadWindUI()
     local urls = {
-        "https://cdn.jsdelivr.net/gh/deividcomsono/Obsidian@main/" .. path,
-        "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/" .. path
+        "https://github.com/Footagesus/WindUI/releases/latest/download/main.lua",
+        "https://cdn.jsdelivr.net/gh/Footagesus/WindUI@main/dist/main.lua",
+        "https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"
     }
     for _, url in ipairs(urls) do
         local ok, src = pcall(function()
             return game:HttpGet(url)
         end)
-        if ok and src and #src > 100 then
+        if ok and src and #src > 500 then
             local loadOk, fn = pcall(loadstring, src)
             if loadOk and type(fn) == "function" then
-                local execOk, res = pcall(fn)
-                if execOk and res then
-                    return res
+                local execOk, lib = pcall(fn)
+                if execOk and lib then
+                    return lib
                 end
             end
         end
     end
-    error("[RZO HUB] Failed to download Obsidian component: " .. tostring(path))
+    error("[RZO HUB] Failed to download WindUI library.")
 end
 
 local function LoadMainHub()
-local Library = loadObsidianComponent("Library.lua")
-local ThemeManager = loadObsidianComponent("addons/ThemeManager.lua")
-local SaveManager = loadObsidianComponent("addons/SaveManager.lua")
+local WindUI = loadWindUI()
 
-local Options = Library.Options
-local Toggles = Library.Toggles
+local Window = WindUI:CreateWindow({
+    Title = "RZO HUB - Volleyball Legends",
+    Icon = "zap",
+    Author = "RZO HUB",
+    Folder = "RzoHub/VolleyballLegends",
+    Size = UDim2.fromOffset(600, 440),
+    Transparent = true,
+    Theme = "Dark",
+    ToggleKey = Enum.KeyCode.RightControl,
+    Resizable = true,
+})
 
 local function notify(titleOrTable, content, duration)
     if typeof(titleOrTable) == "table" then
-        Library:Notify({
+        WindUI:Notify({
             Title = titleOrTable.Title or "Notification",
-            Description = titleOrTable.Content or titleOrTable.Description or "",
-            Time = titleOrTable.Duration or titleOrTable.Time or 3,
+            Content = titleOrTable.Content or titleOrTable.Description or "",
+            Duration = titleOrTable.Duration or titleOrTable.Time or 3,
         })
     else
-        Library:Notify({
+        WindUI:Notify({
             Title = tostring(titleOrTable or "Notification"),
-            Description = tostring(content or ""),
-            Time = tonumber(duration) or 3,
+            Content = tostring(content or ""),
+            Duration = tonumber(duration) or 3,
         })
     end
 end
-
-local Window = Library:CreateWindow({
-    Title = "RZO HUB - Volleyball Legends",
-    Footer = "RZO HUB | Volleyball Legends",
-    NotifySide = "Right",
-    ShowCustomCursor = true,
-})
 Window.Notify = function(self, info)
     notify(info)
 end
@@ -617,8 +618,10 @@ local function createFloatingToggle()
 
     toggleBtn.MouseButton1Click:Connect(function()
         pcall(function()
-            if Library and Library.Toggle then
-                Library:Toggle()
+            if Window and Window.Toggle then
+                Window:Toggle()
+            elseif WindUI and WindUI.Toggle then
+                WindUI:Toggle()
             end
         end)
     end)
@@ -638,14 +641,6 @@ pcall(function()
     if safeParent then
         local oldPerf = safeParent:FindFirstChild("RzoHub_PerfOverlay")
         if oldPerf then oldPerf:Destroy() end
-    end
-    if Library then
-        if Library.SetWatermarkVisibility then
-            Library:SetWatermarkVisibility(false)
-        end
-        if Library.KeybindFrame then
-            Library.KeybindFrame.Visible = false
-        end
     end
 end)
 
@@ -2037,26 +2032,27 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     end
 end)
 
--- [[ UI INITIALIZATION - OBSIDIAN ]]
+-- [[ UI INITIALIZATION - WINDUI ]]
 local Tabs = {
-    Main = Window:AddTab("Main", "crosshair"),
-    Character = Window:AddTab("Character", "user"),
-    Misc = Window:AddTab("Misc", "settings"),
-    GameJoin = Window:AddTab("Game Join", "gamepad-2"),
-    Changelogs = Window:AddTab("Changelogs", "file-text"),
-    ["UI Settings"] = Window:AddTab("UI Settings", "sliders"),
+    Main = Window:Tab({ Title = "Main", Icon = "crosshair", Desc = "Gameplay & Spikes" }),
+    Character = Window:Tab({ Title = "Character", Icon = "user", Desc = "Attributes & Movement" }),
+    Misc = Window:Tab({ Title = "Misc", Icon = "settings", Desc = "Shop, Rollback & Spins" }),
+    GameJoin = Window:Tab({ Title = "Game Join", Icon = "gamepad-2", Desc = "Game Modes Teleport" }),
+    Changelogs = Window:Tab({ Title = "Changelogs", Icon = "file-text", Desc = "Version & Changes" }),
+    Settings = Window:Tab({ Title = "UI Settings", Icon = "sliders", Desc = "Themes & Controls" }),
 }
 
--- Main Tab Groupboxes
-local MainLeft = Tabs.Main:AddGroupbox({ Side = "Left", Name = "Spike Settings", IconName = "zap" })
-local MainRight = Tabs.Main:AddGroupbox({ Side = "Right", Name = "Hitbox Settings", IconName = "box" })
-local MainPerf = Tabs.Main:AddGroupbox({ Side = "Left", Name = "Performance & Movement", IconName = "activity" })
-local MainServe = Tabs.Main:AddGroupbox({ Side = "Right", Name = "Serve Settings", IconName = "sparkles" })
+-- Main Tab Sections
+local MainLeft = Tabs.Main:Section({ Title = "Spike Settings", Opened = true })
+local MainRight = Tabs.Main:Section({ Title = "Hitbox Settings", Opened = true })
+local MainPerf = Tabs.Main:Section({ Title = "Performance & Movement", Opened = true })
+local MainServe = Tabs.Main:Section({ Title = "Serve Settings", Opened = true })
 
 -- Spike Settings (Free Edition)
-MainLeft:AddToggle("sanju", {
-    Text = "Sanju Tilt",
-    Default = false,
+MainLeft:Toggle({
+    Title = "Sanju Tilt",
+    Desc = "Spike tilt trajectory modification",
+    Value = false,
     Callback = function(v)
         if v then
             enableSanjuTilt()
@@ -2066,9 +2062,10 @@ MainLeft:AddToggle("sanju", {
     end,
 })
 
-MainLeft:AddToggle("maxcharge", {
-    Text = "Max Charge Special (Ronin)",
-    Default = false,
+MainLeft:Toggle({
+    Title = "Max Charge Special (Ronin)",
+    Desc = "Charge max power on Ronin spike",
+    Value = false,
     Callback = function(v)
         if v then
             enableMaxCharge()
@@ -2079,22 +2076,26 @@ MainLeft:AddToggle("maxcharge", {
 })
 
 -- Hitbox Settings
-MainRight:AddSlider("hitboxsize", {
-    Text = "Hitbox Size",
-    Default = 5,
-    Min = 0,
-    Max = 20,
-    Rounding = 1,
+MainRight:Slider({
+    Title = "Hitbox Size",
+    Desc = "Ball interaction radius scale",
+    Step = 0.5,
+    Value = {
+        Min = 0,
+        Max = 20,
+        Default = 5,
+    },
     Callback = function(v)
-        hitboxScale = v
-        updateHitboxes(v)
+        hitboxScale = tonumber(v) or 5
+        updateHitboxes(hitboxScale)
     end,
 })
 
-MainRight:AddDropdown("hitboxcolor", {
-    Text = "Hitbox Color",
+MainRight:Dropdown({
+    Title = "Hitbox Color",
+    Desc = "Highlight bounding box color",
     Values = {"Green", "Blue", "Red", "Yellow", "Purple", "Orange", "Pink", "White"},
-    Default = "Green",
+    Value = "Green",
     Callback = function(v)
         local colors = {
             Green = Color3.fromRGB(0, 255, 0),
@@ -2112,17 +2113,19 @@ MainRight:AddDropdown("hitboxcolor", {
     end,
 })
 
-MainRight:AddButton({
-    Text = "Remove Hitboxes",
-    Func = function()
+MainRight:Button({
+    Title = "Remove Hitboxes",
+    Desc = "Clear all active hitboxes",
+    Callback = function()
         removeHitboxes()
         notify("Hitboxes Removed", "All hitboxes cleared", 2)
     end,
 })
 
-MainRight:AddButton({
-    Text = "Show / Hide Stop Ball",
-    Func = function()
+MainRight:Button({
+    Title = "Show / Hide Stop Ball",
+    Desc = "Toggle mobile stop-ball button",
+    Callback = function()
         stopBallVisible = not stopBallVisible
         if stopBallButton then
             stopBallButton.Visible = stopBallVisible
@@ -2133,9 +2136,10 @@ MainRight:AddButton({
     end,
 })
 
-MainRight:AddButton({
-    Text = "Show / Hide Aim",
-    Func = function()
+MainRight:Button({
+    Title = "Show / Hide Aim",
+    Desc = "Toggle mobile aim button",
+    Callback = function()
         aimVisible = not aimVisible
         if aimButton then
             aimButton.Visible = aimVisible
@@ -2147,9 +2151,10 @@ MainRight:AddButton({
 })
 
 -- Performance & Movement
-MainPerf:AddToggle("antilag", {
-    Text = "Anti-Lag",
-    Default = false,
+MainPerf:Toggle({
+    Title = "Anti-Lag (FPS Boost)",
+    Desc = "Disable heavy shadows and bloom effects",
+    Value = false,
     Callback = function(v)
         if v then
             pcall(function()
@@ -2182,9 +2187,10 @@ MainPerf:AddToggle("antilag", {
     end,
 })
 
-MainPerf:AddToggle("desync", {
-    Text = "Desync",
-    Default = false,
+MainPerf:Toggle({
+    Title = "Desync",
+    Desc = "Network packet desynchronization",
+    Value = false,
     Callback = function(v)
         if v then
             enableDesync()
@@ -2196,9 +2202,10 @@ MainPerf:AddToggle("desync", {
     end,
 })
 
-MainPerf:AddToggle("autoreceive", {
-    Text = "Auto Receive",
-    Default = false,
+MainPerf:Toggle({
+    Title = "Auto Receive",
+    Desc = "Automatic ball receive positioning",
+    Value = false,
     Callback = function(v)
         if v then
             enableAutoReceive()
@@ -2210,9 +2217,10 @@ MainPerf:AddToggle("autoreceive", {
     end,
 })
 
-MainPerf:AddToggle("akaridash", {
-    Text = "Akari Dash",
-    Default = false,
+MainPerf:Toggle({
+    Title = "Akari Dash",
+    Desc = "Fast directional dash button",
+    Value = false,
     Callback = function(v)
         akariDashEnabled = v
         if dashButton then
@@ -2222,10 +2230,11 @@ MainPerf:AddToggle("akaridash", {
     end,
 })
 
--- Serve Settings (Free Edition)
-MainServe:AddToggle("maxserve", {
-    Text = "Max Serve",
-    Default = false,
+-- Serve Settings
+MainServe:Toggle({
+    Title = "Max Serve",
+    Desc = "Force power value 5 on server remote",
+    Value = false,
     Callback = function(v)
         if v then
             enableMaxServe()
@@ -2237,14 +2246,14 @@ MainServe:AddToggle("maxserve", {
     end,
 })
 
--- Character Tab Groupboxes
-local CharLeft = Tabs.Character:AddGroupbox({ Side = "Left", Name = "Attributes", IconName = "sliders-horizontal" })
-local CharRight = Tabs.Character:AddGroupbox({ Side = "Right", Name = "Movement", IconName = "move" })
+-- Character Tab Sections
+local CharLeft = Tabs.Character:Section({ Title = "Attributes", Opened = true })
+local CharRight = Tabs.Character:Section({ Title = "Movement", Opened = true })
 
-CharLeft:AddInput("divespeed", {
-    Text = "Dive Speed",
+CharLeft:Input({
+    Title = "Dive Speed",
     Placeholder = "0.95",
-    Finished = false,
+    Value = "",
     Callback = function(v)
         local num = tonumber(v)
         if num then
@@ -2253,10 +2262,10 @@ CharLeft:AddInput("divespeed", {
     end,
 })
 
-CharLeft:AddInput("jumppower", {
-    Text = "Jump Power",
+CharLeft:Input({
+    Title = "Jump Power",
     Placeholder = "1.1",
-    Finished = false,
+    Value = "",
     Callback = function(v)
         local num = tonumber(v)
         if num then
@@ -2265,10 +2274,10 @@ CharLeft:AddInput("jumppower", {
     end,
 })
 
-CharLeft:AddInput("speed", {
-    Text = "Speed",
+CharLeft:Input({
+    Title = "Speed",
     Placeholder = "0.85",
-    Finished = false,
+    Value = "",
     Callback = function(v)
         local num = tonumber(v)
         if num then
@@ -2277,9 +2286,10 @@ CharLeft:AddInput("speed", {
     end,
 })
 
-CharRight:AddToggle("airmove", {
-    Text = "Air Movement",
-    Default = false,
+CharRight:Toggle({
+    Title = "Air Movement",
+    Desc = "Glide in mid-air",
+    Value = false,
     Callback = function(v)
         airMovement = v
         if not v and bodyVelocity then
@@ -2289,23 +2299,26 @@ CharRight:AddToggle("airmove", {
     end,
 })
 
-CharRight:AddSlider("airspeed", {
-    Text = "Air Movement Speed",
-    Default = 16,
-    Min = 0,
-    Max = 100,
-    Rounding = 0,
+CharRight:Slider({
+    Title = "Air Movement Speed",
+    Desc = "Air glide velocity intensity",
+    Step = 1,
+    Value = {
+        Min = 0,
+        Max = 100,
+        Default = 16,
+    },
     Callback = function(v)
-        airMovementSpeed = v
+        airMovementSpeed = tonumber(v) or 16
     end,
 })
 
--- Auto Shift Lock (Original Implementation - Zero AutoRotate)
 local autoShiftLock = false
 
-CharRight:AddToggle("autoshiftlock", {
-    Text = "Auto Shift Lock",
-    Default = false,
+CharRight:Toggle({
+    Title = "Auto Shift Lock",
+    Desc = "Lock facing direction prior to jumping",
+    Value = false,
     Callback = function(v)
         autoShiftLock = v
         notify("Auto Shift Lock", v and "ENABLED" or "DISABLED", 2)
@@ -2335,26 +2348,22 @@ if LocalPlayer.Character then
 end
 LocalPlayer.CharacterAdded:Connect(setupCharacter)
 
--- Visuals Tab removed for Free Edition
+-- Misc Tab Sections
+local MiscRollback = Tabs.Misc:Section({ Title = "Data Rollback", Opened = true })
+local MiscShop = Tabs.Misc:Section({ Title = "Shop", Opened = true })
+local MiscStyleSpin = Tabs.Misc:Section({ Title = "Auto Style Spin", Opened = true })
+local MiscAbilitySpin = Tabs.Misc:Section({ Title = "Auto Ability Spin", Opened = true })
+local MiscRewards = Tabs.Misc:Section({ Title = "Claim Rewards", Opened = true })
 
--- Misc Tab Groupboxes
-Tabs.Misc:UpdateWarningBox({
-    Visible = true,
-    Title = "DATA ROLLBACK WARNING",
-    Text = "Perhatian: Gunakan MINIMAL 10 spin saat melakukan rollback, jangan lebih! Use at your own risk.",
+MiscRollback:Paragraph({
+    Title = "Peringatan Data Rollback",
+    Desc = "- Minimal gunakan 10 spin (jangan lebih!)\n- Use at your own risk!\n- Crash server untuk revert inventory",
 })
 
-local MiscRollback = Tabs.Misc:AddGroupbox({ Side = "Left", Name = "Data Rollback", IconName = "database" })
-local MiscShop = Tabs.Misc:AddGroupbox({ Side = "Right", Name = "Shop", IconName = "shopping-cart" })
-local MiscStyleSpin = Tabs.Misc:AddGroupbox({ Side = "Left", Name = "Auto Style Spin", IconName = "rotate-cw" })
-local MiscAbilitySpin = Tabs.Misc:AddGroupbox({ Side = "Right", Name = "Auto Ability Spin", IconName = "sparkle" })
-local MiscRewards = Tabs.Misc:AddGroupbox({ Side = "Left", Name = "Claim Rewards", IconName = "gift" })
-
-MiscRollback:AddLabel("Pemberitahuan:\n- Minimal gunakan 10 spin (jangan lebih!)\n- Use at your own risk!", true)
-
-MiscRollback:AddButton({
-    Text = "Execute Data Rollback",
-    Func = function()
+MiscRollback:Button({
+    Title = "Execute Data Rollback",
+    Desc = "Revert inventory by disconnecting session",
+    Callback = function()
         local Remote = game:GetService("ReplicatedStorage")
             :WaitForChild("Packages")
             :WaitForChild("_Index")
@@ -2366,13 +2375,14 @@ MiscRollback:AddButton({
             :WaitForChild("UpdateKeybind")
         Remote:InvokeServer("MouseButton1", true, "Spike\xE2\x80\x8B\x8F")
         notify("Data Rollback", "Executed! Rejoining...", 2)
-        game:GetService("TeleportService"):Teleport(game.PlaceId)
+        TeleportService:Teleport(game.PlaceId)
     end,
 })
 
-MiscStyleSpin:AddToggle("autostyle", {
-    Text = "Auto Style Spin",
-    Default = false,
+MiscStyleSpin:Toggle({
+    Title = "Auto Style Spin",
+    Desc = "Continuously spin for target style",
+    Value = false,
     Callback = function(v)
         autoSpin = v
         if v then
@@ -2381,28 +2391,30 @@ MiscStyleSpin:AddToggle("autostyle", {
     end,
 })
 
-MiscStyleSpin:AddDropdown("spintype", {
-    Text = "Spin Type",
+MiscStyleSpin:Dropdown({
+    Title = "Spin Type",
+    Desc = "Select spin tier",
     Values = {"Normal", "Lucky"},
-    Default = "Normal",
+    Value = "Normal",
     Callback = function(v)
         spinType = v
     end,
 })
 
-MiscStyleSpin:AddInput("targetstyle", {
-    Text = "Target Style",
+MiscStyleSpin:Input({
+    Title = "Target Style",
     Placeholder = "Sanju",
-    Finished = false,
+    Value = "",
     Callback = function(v)
         desiredStyles = {v}
         notify("Target Set", "Target style: " .. tostring(v), 2)
     end,
 })
 
-MiscStyleSpin:AddButton({
-    Text = "Instant Spin",
-    Func = function()
+MiscStyleSpin:Button({
+    Title = "Instant Spin",
+    Desc = "Spin style once immediately",
+    Callback = function()
         local args = { [1] = (spinType == "Lucky") }
         local StyleService = getKnitService("StyleService")
         if StyleService then
@@ -2418,9 +2430,10 @@ MiscStyleSpin:AddButton({
     end,
 })
 
-MiscAbilitySpin:AddToggle("autoabilityspin", {
-    Text = "Auto Ability Spin",
-    Default = false,
+MiscAbilitySpin:Toggle({
+    Title = "Auto Ability Spin",
+    Desc = "Continuously spin for target ability",
+    Value = false,
     Callback = function(v)
         autoAbilitySpin = v
         if v then
@@ -2429,28 +2442,30 @@ MiscAbilitySpin:AddToggle("autoabilityspin", {
     end,
 })
 
-MiscAbilitySpin:AddDropdown("abilityspintype", {
-    Text = "Ability Spin Type",
+MiscAbilitySpin:Dropdown({
+    Title = "Ability Spin Type",
+    Desc = "Select ability spin tier",
     Values = {"Normal", "Lucky"},
-    Default = "Normal",
+    Value = "Normal",
     Callback = function(v)
         abilitySpinType = v
     end,
 })
 
-MiscAbilitySpin:AddInput("targetability", {
-    Text = "Target Ability",
+MiscAbilitySpin:Input({
+    Title = "Target Ability",
     Placeholder = "Shield Breaker",
-    Finished = false,
+    Value = "",
     Callback = function(v)
         desiredAbilities = {v}
         notify("Target Set", "Target ability: " .. tostring(v), 2)
     end,
 })
 
-MiscAbilitySpin:AddButton({
-    Text = "Instant Spin",
-    Func = function()
+MiscAbilitySpin:Button({
+    Title = "Instant Ability Spin",
+    Desc = "Spin ability once immediately",
+    Callback = function()
         local args = { [1] = (abilitySpinType == "Lucky") }
         local AbilityService = getKnitService("AbilityService")
         if AbilityService then
@@ -2466,9 +2481,9 @@ MiscAbilitySpin:AddButton({
     end,
 })
 
-MiscRewards:AddButton({
-    Text = "Claim Level Rewards",
-    Func = function()
+MiscRewards:Button({
+    Title = "Claim Level Rewards",
+    Callback = function()
         local LevelService = getKnitService("LevelService")
         if LevelService then
             local RF = LevelService:FindFirstChild("RF")
@@ -2483,9 +2498,9 @@ MiscRewards:AddButton({
     end,
 })
 
-MiscRewards:AddButton({
-    Text = "Claim Quest Rewards",
-    Func = function()
+MiscRewards:Button({
+    Title = "Claim Quest Rewards",
+    Callback = function()
         local QuestService = getKnitService("QuestService")
         if QuestService then
             local RF = QuestService:FindFirstChild("RF")
@@ -2500,9 +2515,9 @@ MiscRewards:AddButton({
     end,
 })
 
-MiscRewards:AddButton({
-    Text = "Redeem All Codes",
-    Func = function()
+MiscRewards:Button({
+    Title = "Redeem All Codes",
+    Callback = function()
         local function fetchNewCodes()
             local success, data = pcall(function()
                 return game:HttpGet("https://beebom.com/haikyuu-legends-codes/")
@@ -2550,9 +2565,9 @@ MiscRewards:AddButton({
     end,
 })
 
-MiscShop:AddButton({
-    Text = "Buy Emote",
-    Func = function()
+MiscShop:Button({
+    Title = "Buy Emote",
+    Callback = function()
         local PackService = getKnitService("PackService").RF
         if PackService then
             local Open = PackService:FindFirstChild("Open")
@@ -2564,9 +2579,9 @@ MiscShop:AddButton({
     end,
 })
 
-MiscShop:AddButton({
-    Text = "Buy Effect",
-    Func = function()
+MiscShop:Button({
+    Title = "Buy Effect",
+    Callback = function()
         local PackService = getKnitService("PackService").RF
         if PackService then
             local Open = PackService:FindFirstChild("Open")
@@ -2578,9 +2593,9 @@ MiscShop:AddButton({
     end,
 })
 
-MiscShop:AddButton({
-    Text = "Buy Extreme Ball",
-    Func = function()
+MiscShop:Button({
+    Title = "Buy Extreme Ball",
+    Callback = function()
         local PackService = getKnitService("PackService").RF
         if PackService then
             local Open = PackService:FindFirstChild("Open")
@@ -2592,9 +2607,9 @@ MiscShop:AddButton({
     end,
 })
 
-MiscShop:AddButton({
-    Text = "Buy Medium Ball",
-    Func = function()
+MiscShop:Button({
+    Title = "Buy Medium Ball",
+    Callback = function()
         local PackService = getKnitService("PackService").RF
         if PackService then
             local Open = PackService:FindFirstChild("Open")
@@ -2606,9 +2621,9 @@ MiscShop:AddButton({
     end,
 })
 
-MiscShop:AddButton({
-    Text = "Buy Basic Ball",
-    Func = function()
+MiscShop:Button({
+    Title = "Buy Basic Ball",
+    Callback = function()
         local PackService = getKnitService("PackService").RF
         if PackService then
             local Open = PackService:FindFirstChild("Open")
@@ -2620,15 +2635,15 @@ MiscShop:AddButton({
     end,
 })
 
-MiscShop:AddButton({
-    Text = "Rejoin Server",
-    Func = function()
+MiscShop:Button({
+    Title = "Rejoin Server",
+    Callback = function()
         TeleportService:Teleport(game.PlaceId)
     end,
 })
 
--- Game Join Tab Groupboxes
-local JoinGroup = Tabs.GameJoin:AddGroupbox({ Side = "Left", Name = "Game Modes", IconName = "swords" })
+-- Game Join Tab
+local JoinGroup = Tabs.GameJoin:Section({ Title = "Game Modes", Opened = true })
 
 local function requestGameMode(modeName, displayLabel)
     local PartyService = getKnitService("PartyService").RF
@@ -2641,65 +2656,69 @@ local function requestGameMode(modeName, displayLabel)
     end
 end
 
-JoinGroup:AddButton({ Text = "Chaos Mode", Func = function() requestGameMode("ChaosMode", "Chaos Mode") end })
-JoinGroup:AddButton({ Text = "1v1 Mini Map", Func = function() requestGameMode("OnesMini", "1v1 Mini Map") end })
-JoinGroup:AddButton({ Text = "2v2 Ranked", Func = function() requestGameMode("Twos", "2v2 Ranked") end })
-JoinGroup:AddButton({ Text = "3v3 Ranked", Func = function() requestGameMode("Threes", "3v3 Ranked") end })
-JoinGroup:AddButton({ Text = "4v4 Ranked", Func = function() requestGameMode("Fours", "4v4 Ranked") end })
-JoinGroup:AddButton({ Text = "6v6 Ranked", Func = function() requestGameMode("Sixes", "6v6 Ranked") end })
-JoinGroup:AddButton({ Text = "Training", Func = function() requestGameMode("Training", "Training") end })
+JoinGroup:Button({ Title = "Chaos Mode", Callback = function() requestGameMode("ChaosMode", "Chaos Mode") end })
+JoinGroup:Button({ Title = "1v1 Mini Map", Callback = function() requestGameMode("OnesMini", "1v1 Mini Map") end })
+JoinGroup:Button({ Title = "2v2 Ranked", Callback = function() requestGameMode("Twos", "2v2 Ranked") end })
+JoinGroup:Button({ Title = "3v3 Ranked", Callback = function() requestGameMode("Threes", "3v3 Ranked") end })
+JoinGroup:Button({ Title = "4v4 Ranked", Callback = function() requestGameMode("Fours", "4v4 Ranked") end })
+JoinGroup:Button({ Title = "6v6 Ranked", Callback = function() requestGameMode("Sixes", "6v6 Ranked") end })
+JoinGroup:Button({ Title = "Training", Callback = function() requestGameMode("Training", "Training") end })
 
--- Changelogs Tab Groupboxes
-local ChangeLogLeft = Tabs.Changelogs:AddGroupbox({ Side = "Left", Name = "Changelogs", IconName = "history" })
-local ChangeLogRight = Tabs.Changelogs:AddGroupbox({ Side = "Right", Name = "Version Info", IconName = "info" })
+-- Changelogs Tab
+local ChangeLogSec = Tabs.Changelogs:Section({ Title = "Changelogs", Opened = true })
+local VersionSec = Tabs.Changelogs:Section({ Title = "Version Info", Opened = true })
 
-ChangeLogLeft:AddLabel([[ADDING VOLLEYBALLLEGENDS
+ChangeLogSec:Paragraph({
+    Title = "ADDING VOLLEYBALLLEGENDS",
+    Desc = "[+] UI Migrated to WindUI (Modern, Ultra-Smooth)\n[+] VBL License Key Gateway (+24h HWID Auth)\n[+] Universal Executor Shims (Delta, Solara, Codex, Wave)\n[+] Unified Namecall Hook (Collision-Free Engine)\n[+] Shift Lock Jump Fix (Pre-Jump Direction Lock)\n[+] Max Charge Special (Ronin)\n[+] Sanju Tilt\n[+] Max Serve\n[-] Stripped Premium Spikes (Free Edition)\n[-] Cleaned Visual Clutter (ScoreEffect, ESP, PlayerCards)"
+})
 
-[+] VBL License Key Gateway (+24h HWID Auth)
-[+] Universal Executor Shims (Delta, Solara, Codex, Wave)
-[+] Unified Namecall Hook (Collision-Free Engine)
-[+] Shift Lock Jump Fix (Pre-Jump Direction Lock)
-[+] Max Charge Special (Ronin)
-[+] Sanju Tilt
-[+] Max Serve
-[-] Stripped Premium Spikes (Free Edition)
-[-] Cleaned Visual Clutter (ScoreEffect, ESP, PlayerCards)]], true)
+VersionSec:Paragraph({
+    Title = "Hub Metadata",
+    Desc = "Hub: RZO HUB\nTarget: Volleyball Legends\nBranch: Free Edition\nEngine: WindUI\nPlatform: Universal Luau"
+})
 
-ChangeLogRight:AddLabel("Hub: RZO HUB\nTarget: Volleyball Legends\nBranch: Free Edition\nEngine: Obsidian UI\nPlatform: Universal Luau", true)
-ChangeLogRight:AddDivider()
-ChangeLogRight:AddButton({
-    Text = "Copy Discord Link",
-    Func = function()
+VersionSec:Button({
+    Title = "Copy Discord Link",
+    Callback = function()
         setClipboardSafe("https://discord.gg/vNExQNRK3")
         notify("Discord", "Discord invite link copied to clipboard!", 2)
     end,
 })
 
--- UI Settings Tab Groupboxes
-local MenuGroup = Tabs["UI Settings"]:AddGroupbox({ Side = "Left", Name = "Menu Controls", IconName = "wrench" })
-local ActionGroup = Tabs["UI Settings"]:AddGroupbox({ Side = "Right", Name = "Emergency & Actions", IconName = "alert-triangle" })
+-- UI Settings Tab
+local SettingsMenu = Tabs.Settings:Section({ Title = "Theme & Customization", Opened = true })
+local SettingsActions = Tabs.Settings:Section({ Title = "Emergency & Controls", Opened = true })
 
-local function stableCleanup()
-    pcall(disableRedirectSpike)
-    pcall(disableSanjuTilt)
-    pcall(disableMaxCharge)
-    pcall(disableMaxServe)
-    pcall(disableDesync)
-    pcall(disableAutoReceive)
-    pcall(disableHitEffect)
-    pcall(disablePlayerCard)
-    if bodyVelocity then
-        pcall(function() bodyVelocity:Destroy() end)
-        bodyVelocity = nil
-    end
-    removeHitboxes()
-    for player in pairs(espHighlights) do pcall(removeESP, player) end
-    for player in pairs(espPlayers) do pcall(removeESP2, player) end
-end
+SettingsMenu:Dropdown({
+    Title = "Select Theme",
+    Desc = "Change WindUI appearance theme",
+    Values = { "Dark", "Midnight", "Indigo", "Sky", "Violet", "Rose", "Emerald", "Plant", "Red", "Crimson", "MonokaiPro", "CottonCandy" },
+    Value = "Dark",
+    Callback = function(themeName)
+        pcall(function()
+            WindUI:SetTheme(themeName)
+        end)
+    end,
+})
 
-ActionGroup:AddButton({
-    Text = "Panic Mode (Disable All)",
-    Func = function()
+SettingsMenu:Keybind({
+    Title = "Menu Keybind",
+    Desc = "Key to toggle WindUI menu",
+    Value = Enum.KeyCode.RightControl,
+    Callback = function(key)
+        pcall(function()
+            if Window and Window.SetToggleKey then
+                Window:SetToggleKey(key)
+            end
+        end)
+    end,
+})
+
+SettingsActions:Button({
+    Title = "Panic Mode (Disable All)",
+    Desc = "Immediately deactivate all features",
+    Callback = function()
         removeHitboxes()
         silentSpikeEnabled = false
         redirectSpikeEnabled = false
@@ -2741,141 +2760,41 @@ ActionGroup:AddButton({
         for player in pairs(espHighlights) do removeESP(player) end
         for player in pairs(espPlayers) do removeESP2(player) end
 
-        -- Sync UI toggles
-        for _, toggleKey in ipairs({
-            "sanju", "maxcharge",
-            "antilag", "desync", "autoreceive", "akaridash",
-            "maxserve", "airmove",
-            "autoshiftlock", "autostyle", "autoabilityspin"
-        }) do
-            if Toggles[toggleKey] and Toggles[toggleKey].SetValue then
-                Toggles[toggleKey]:SetValue(false)
-            end
-        end
-
         notify("Panic Mode", "All features disabled", 3)
     end,
 })
 
-ActionGroup:AddButton({
-    Text = "Unload UI & Cleanup",
-    Func = function()
-        stableCleanup()
-        Library:Unload()
-    end,
-})
-
-ActionGroup:AddButton({
-    Text = "Toggle Menu (Show/Hide)",
-    Func = function()
-        Library:Toggle()
-    end,
-})
-
-ActionGroup:AddDivider()
-ActionGroup:AddLabel("RZO HUB - Volleyball Legends\nUI migrated to Obsidian UI Library\nPress RightControl or custom bind to toggle UI", true)
-
-MenuGroup:AddToggle("KeybindMenuOpen", {
-    Default = false,
-    Text = "Open Keybind Menu",
-    Callback = function(value)
-        if Library and Library.KeybindFrame then
-            Library.KeybindFrame.Visible = value
+SettingsActions:Button({
+    Title = "Toggle Window",
+    Desc = "Open or close WindUI interface",
+    Callback = function()
+        if Window and Window.Toggle then
+            Window:Toggle()
         end
     end,
 })
 
-MenuGroup:AddToggle("ShowCustomCursor", {
-    Text = "Custom Cursor",
-    Default = Library.ShowCustomCursor,
-    Callback = function(Value)
-        Library.ShowCustomCursor = Value
-    end,
-})
-
-MenuGroup:AddToggle("AlwaysOnTop", {
-    Text = "Always On Top",
-    Default = Window.AlwaysOnTop,
-    Callback = function(Value)
-        Window:SetAlwaysOnTop(Value)
-    end,
-})
-
-MenuGroup:AddDropdown("NotificationSide", {
-    Values = { "Left", "Right" },
-    Default = "Right",
-    Text = "Notification Side",
-    Callback = function(Value)
-        Library:SetNotifySide(Value)
-    end,
-})
-
-MenuGroup:AddDropdown("DPIDropdown", {
-    Values = { "50%", "75%", "100%", "125%", "150%", "175%", "200%" },
-    Default = "100%",
-    Text = "DPI Scale",
-    Callback = function(Value)
-        Value = Value:gsub("%%", "")
-        local DPI = tonumber(Value)
-        if DPI then
-            Library:SetDPIScale(DPI)
+SettingsActions:Button({
+    Title = "Unload UI",
+    Desc = "Safely close and destroy WindUI",
+    Callback = function()
+        if Window and Window.Destroy then
+            Window:Destroy()
         end
     end,
 })
 
-MenuGroup:AddSlider("UICornerSlider", {
-    Text = "Corner Radius",
-    Default = Library.CornerRadius,
-    Min = 0,
-    Max = 20,
-    Rounding = 0,
-    Callback = function(value)
-        Window:SetCornerRadius(value)
-    end,
-})
-
-MenuGroup:AddDivider()
-MenuGroup:AddLabel("Menu Keybind"):AddKeyPicker("MenuKeybind", { Default = "RightControl", NoUI = true, Text = "Menu keybind" })
-
-Library.ToggleKeybind = Options.MenuKeybind
-
--- Theme & Config Managers
-ThemeManager:SetLibrary(Library)
-SaveManager:SetLibrary(Library)
-
-SaveManager:IgnoreThemeSettings()
-SaveManager:SetIgnoreIndexes({ "MenuKeybind" })
-
-ThemeManager:SetFolder("RzoHub")
-SaveManager:SetFolder("RzoHub/VolleyballLegends")
-
-SaveManager:BuildConfigSection(Tabs["UI Settings"])
-ThemeManager:ApplyToTab(Tabs["UI Settings"], "palette")
-
-SaveManager:LoadAutoloadConfig()
-
-pcall(function()
-    if Library then
-        if Library.KeybindFrame then
-            Library.KeybindFrame.Visible = false
+-- Force open WindUI menu on load
+task.defer(function()
+    task.wait(0.25)
+    pcall(function()
+        if Window and Window.Open then
+            Window:Open()
         end
-        if Library.SetWatermarkVisibility then
-            Library:SetWatermarkVisibility(false)
-        end
-    end
+    end)
 end)
 
--- Force open Obsidian menu on load
-    task.defer(function()
-        task.wait(0.25)
-        pcall(function()
-            if Library and Library.Toggle then
-                Library:Toggle(true)
-            end
-        end)
-    end)
-
-    notify("RZO HUB", "ADDING VOLLEYBALLLEGENDS - Loaded successfully!", 3)
+notify("RZO HUB", "ADDING VOLLEYBALLLEGENDS - Loaded successfully!", 3)
 end
 
 -- Launch VBL License Authentication Gateway asynchronously
