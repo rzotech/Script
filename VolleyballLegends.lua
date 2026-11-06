@@ -1,3 +1,8 @@
+-- Wait for game to be fully loaded
+if not game:IsLoaded() then
+    game.Loaded:Wait()
+end
+
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -9,7 +14,20 @@ local VirtualInputManager = game:GetService("VirtualInputManager")
 local HttpService = game:GetService("HttpService")
 
 local LocalPlayer = Players.LocalPlayer
+if not LocalPlayer then
+    repeat
+        task.wait()
+        LocalPlayer = Players.LocalPlayer
+    until LocalPlayer
+end
+
 local Camera = Workspace.CurrentCamera
+if not Camera then
+    repeat
+        task.wait()
+        Camera = Workspace.CurrentCamera
+    until Camera
+end
 
 
 -- ==============================================================================
@@ -21,7 +39,6 @@ local Camera = Workspace.CurrentCamera
 -- ==============================================================================
 
 local AUTH_API = "https://rzohub.vercel.app/api/verify.php"
-local FALLBACK_API = "http://localhost:8000/api/verify.php"
 local DISCORD_URL = "https://discord.gg/vNExQNRK3"
 local GET_KEY_URL = "https://rzohub.vercel.app"
 local KEY_FOLDER = "RzoHub"
@@ -37,24 +54,28 @@ local function safeClosure(fn)
 end
 
 local function getSafeGuiParent()
-    local lp = Players.LocalPlayer or game:GetService("Players").LocalPlayer
-    local playerGui = lp and (lp:FindFirstChild("PlayerGui") or lp:WaitForChild("PlayerGui", 5))
-
+    -- 1. Try executor gethui() container first
     if gethui and type(gethui) == "function" then
         local ok, h = pcall(gethui)
-        if ok and h then return h end
+        if ok and h and typeof(h) == "Instance" then
+            return h
+        end
     end
 
+    -- 2. PlayerGui is GUARANTEED to render on screen on all platforms & executors
+    local lp = LocalPlayer or Players.LocalPlayer
+    if lp then
+        local pg = lp:FindFirstChild("PlayerGui") or lp:WaitForChild("PlayerGui", 5)
+        if pg then return pg end
+    end
+
+    -- 3. Last fallback: CoreGui
     local ok, cg = pcall(function()
-        local core = game:GetService("CoreGui")
-        local test = Instance.new("Folder")
-        test.Parent = core
-        test:Destroy()
-        return core
+        return game:GetService("CoreGui")
     end)
     if ok and cg then return cg end
 
-    return playerGui
+    return nil
 end
 
 local function getClipboardSafe()
@@ -167,10 +188,6 @@ local function verifyVblKey(key)
     local HttpService = game:GetService("HttpService")
     local query = "?key=" .. HttpService:UrlEncode(cleanKey) .. "&hwid=" .. HttpService:UrlEncode(hwid)
     local body = requestHttp(AUTH_API .. query)
-    
-    if not body then
-        body = requestHttp(FALLBACK_API .. query)
-    end
     
     if not body then
         return false, "Network error: Unable to reach verification server."
@@ -458,11 +475,32 @@ local function launchKeyGateway(onSuccess)
     end)
 end
 
+local function loadObsidianComponent(path)
+    local urls = {
+        "https://cdn.jsdelivr.net/gh/deividcomsono/Obsidian@main/" .. path,
+        "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/" .. path
+    }
+    for _, url in ipairs(urls) do
+        local ok, src = pcall(function()
+            return game:HttpGet(url)
+        end)
+        if ok and src and #src > 100 then
+            local loadOk, fn = pcall(loadstring, src)
+            if loadOk and type(fn) == "function" then
+                local execOk, res = pcall(fn)
+                if execOk and res then
+                    return res
+                end
+            end
+        end
+    end
+    error("[RZO HUB] Failed to download Obsidian component: " .. tostring(path))
+end
+
 local function LoadMainHub()
-local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
-local Library = loadstring(game:HttpGet(repo .. "Library.lua"))()
-local ThemeManager = loadstring(game:HttpGet(repo .. "addons/ThemeManager.lua"))()
-local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
+local Library = loadObsidianComponent("Library.lua")
+local ThemeManager = loadObsidianComponent("addons/ThemeManager.lua")
+local SaveManager = loadObsidianComponent("addons/SaveManager.lua")
 
 local Options = Library.Options
 local Toggles = Library.Toggles
@@ -2840,24 +2878,35 @@ end)
     notify("RZO HUB", "ADDING VOLLEYBALLLEGENDS - Loaded successfully!", 3)
 end
 
--- Launch VBL License Authentication Gateway with error protection
-launchKeyGateway(function(key, data)
-    local ok, err = pcall(LoadMainHub)
+-- Launch VBL License Authentication Gateway asynchronously
+task.spawn(function()
+    print("[RZO HUB] Initializing VBL client gateway...")
+    local ok, err = pcall(function()
+        launchKeyGateway(function(key, data)
+            local hubOk, hubErr = pcall(LoadMainHub)
+            if not hubOk then
+                warn("[RZO HUB ERROR] Failed to load main hub:", tostring(hubErr))
+                local parent = getSafeGuiParent()
+                if parent then
+                    local fallbackGui = Instance.new("ScreenGui")
+                    fallbackGui.Name = "RzoHub_ErrorNotice"
+                    fallbackGui.DisplayOrder = 999999
+                    fallbackGui.Parent = parent
+                    local label = Instance.new("TextLabel")
+                    label.Size = UDim2.new(0, 420, 0, 90)
+                    label.Position = UDim2.new(0.5, -210, 0.2, 0)
+                    label.BackgroundColor3 = Color3.fromRGB(35, 10, 15)
+                    label.TextColor3 = Color3.fromRGB(255, 120, 120)
+                    label.Text = "[RZO HUB LOAD ERROR]\n" .. tostring(hubErr)
+                    label.TextWrapped = true
+                    label.Font = Enum.Font.Code
+                    label.TextSize = 12
+                    label.Parent = fallbackGui
+                end
+            end
+        end)
+    end)
     if not ok then
-        warn("[RZO HUB ERROR] Failed to load main hub:", tostring(err))
-        local parent = getSafeGuiParent()
-        if parent then
-            local fallbackGui = Instance.new("ScreenGui")
-            fallbackGui.Name = "RzoHub_ErrorNotice"
-            fallbackGui.Parent = parent
-            local label = Instance.new("TextLabel")
-            label.Size = UDim2.new(0, 400, 0, 80)
-            label.Position = UDim2.new(0.5, -200, 0.2, 0)
-            label.BackgroundColor3 = Color3.fromRGB(30, 0, 0)
-            label.TextColor3 = Color3.fromRGB(255, 100, 100)
-            label.Text = "[RZO HUB ERROR]\n" .. tostring(err)
-            label.TextWrapped = true
-            label.Parent = fallbackGui
-        end
+        warn("[RZO HUB CRITICAL ERROR] Gateway failed to launch:", tostring(err))
     end
 end)
