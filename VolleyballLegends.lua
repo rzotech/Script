@@ -1,11 +1,178 @@
--- ==============================================================================
--- RZO HUB - Volleyball Legends (VBL) [OBSIDIAN UI RESTORED & HARDENED]
--- UI Library: Obsidian (https://github.com/deividcomsono/Obsidian)
--- ==============================================================================
--- Wait for game to be fully loaded
-if not game:IsLoaded() then
-    game.Loaded:Wait()
+-- =============================================================================
+-- RZO HUB - Volleyball Legends
+-- UI Framework: Obsidian UI Library (github.com/deividcomsono/Obsidian)
+-- Key Authentication: rzo-key-auth API integration
+-- =============================================================================
+
+local AUTH_CONFIG = {
+    Domain = getgenv().RZO_AUTH_DOMAIN or "https://rzohub.vercel.app",
+    Discord = "https://discord.gg/vNExQNRK3",
+    KeyFile = "rzo_key.txt"
+}
+
+local isKeyAuthenticated = false
+local currentLicenseData = nil
+
+local function getHwid()
+    local hwid = nil
+    pcall(function()
+        if type(gethwid) == "function" then
+            hwid = gethwid()
+        elseif type(get_hwid) == "function" then
+            hwid = get_hwid()
+        end
+    end)
+    if not hwid or #tostring(hwid) < 5 then
+        pcall(function()
+            local RbxAnalyticsService = game:GetService("RbxAnalyticsService")
+            hwid = RbxAnalyticsService:GetClientId()
+        end)
+    end
+    if not hwid or #tostring(hwid) < 5 then
+        local Players = game:GetService("Players")
+        local lp = Players.LocalPlayer
+        hwid = "FALLBACK_" .. (lp and lp.UserId or "0")
+    end
+    return tostring(hwid)
 end
+
+local function copyToClipboard(str)
+    pcall(function()
+        if setclipboard then
+            setclipboard(str)
+        elseif toclipboard then
+            toclipboard(str)
+        elseif syn and syn.write_clipboard then
+            syn.write_clipboard(str)
+        end
+    end)
+end
+
+local function makeHttpRequest(url, method, body)
+    local fn = (syn and syn.request) or (http and http.request) or http_request or (fluxus and fluxus.request) or request
+    local HttpService = game:GetService("HttpService")
+    if fn then
+        local ok, res = pcall(function()
+            return fn({
+                Url = url,
+                Method = method or "GET",
+                Headers = {
+                    ["Content-Type"] = "application/json",
+                    ["User-Agent"] = "RZO-HUB-VBL-Client/2.0"
+                },
+                Body = body and HttpService:JSONEncode(body) or nil
+            })
+        end)
+        if ok and res and res.Body then
+            return res.Body
+        end
+    end
+
+    if method == "GET" or not method then
+        local ok, res = pcall(function()
+            return game:HttpGet(url, true)
+        end)
+        if ok and res then
+            return res
+        end
+    end
+
+    return nil
+end
+
+local function verifyLicenseKey(key)
+    if not key or key:gsub("%s+", "") == "" then
+        return false, "MISSING_KEY", "Please enter a valid license key."
+    end
+
+    local cleanKey = key:gsub("%s+", "")
+    local hwid = getHwid()
+    local HttpService = game:GetService("HttpService")
+    local url = string.format(
+        "%s/api/verify.php?key=%s&hwid=%s",
+        AUTH_CONFIG.Domain,
+        cleanKey,
+        hwid
+    )
+
+    local body = makeHttpRequest(url, "GET")
+    if not body then
+        return false, "NETWORK_ERROR", "Failed to connect to RZO HUB server. Check your connection or domain."
+    end
+
+    local ok, parsed = pcall(function()
+        return HttpService:JSONDecode(body)
+    end)
+
+    if not ok or type(parsed) ~= "table" then
+        return false, "SERVER_ERROR", "Invalid response received from authentication server."
+    end
+
+    if parsed.valid == true and parsed.status == "success" then
+        return true, "SUCCESS", parsed
+    else
+        local code = parsed.code or "INVALID_KEY"
+        local message = parsed.message or "License validation failed."
+        return false, code, message
+    end
+end
+
+local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
+local Library = loadstring(game:HttpGet(repo .. "Library.lua", true))()
+local ThemeManager = loadstring(game:HttpGet(repo .. "addons/ThemeManager.lua", true))()
+local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua", true))()
+
+local Options = Library.Options
+local Toggles = Library.Toggles
+
+Library.ForceCheckbox = false
+Library.ShowToggleFrameInKeybinds = true
+
+local Window = Library:CreateWindow({
+    Title = "RZO HUB",
+    Footer = "Volleyball Legends",
+    Icon = 95816097006870,
+    NotifySide = "Right",
+    ShowCustomCursor = true,
+})
+
+local function notify(title, content, duration)
+    Library:Notify({
+        Title = title or "RZO HUB",
+        Description = content or "",
+        Time = duration or 3
+    })
+end
+
+Window.Notify = function(self, data)
+    if type(data) == "table" then
+        notify(data.Title, data.Content or data.Description, data.Duration or data.Time)
+    else
+        notify("RZO HUB", tostring(data), 3)
+    end
+end
+
+local DraggableWatermark = Library:AddDraggableLabel("RZO HUB | Volleyball Legends")
+task.spawn(function()
+    local frameCount = 0
+    local lastTime = tick()
+    local fps = 60
+    local RunService = game:GetService("RunService")
+    local Players = game:GetService("Players")
+    local lp = Players.LocalPlayer
+    RunService.RenderStepped:Connect(function()
+        frameCount = frameCount + 1
+        local now = tick()
+        if now - lastTime >= 1 then
+            fps = frameCount
+            frameCount = 0
+            lastTime = now
+            local timeStr = os.date("%H:%M:%S")
+            local pName = lp and lp.Name or "Player"
+            DraggableWatermark:SetText("RZO HUB | " .. pName .. " | " .. timeStr .. " | " .. tostring(fps) .. " FPS")
+        end
+    end)
+end)
 
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
@@ -16,634 +183,6 @@ local Lighting = game:GetService("Lighting")
 local TeleportService = game:GetService("TeleportService")
 local VirtualInputManager = game:GetService("VirtualInputManager")
 local HttpService = game:GetService("HttpService")
-
-local LocalPlayer = Players.LocalPlayer
-if not LocalPlayer then
-    repeat
-        task.wait()
-        LocalPlayer = Players.LocalPlayer
-    until LocalPlayer
-end
-
-local Camera = Workspace.CurrentCamera
-if not Camera then
-    repeat
-        task.wait()
-        Camera = Workspace.CurrentCamera
-    until Camera
-end
-
-
--- ==============================================================================
--- RZO HUB - Volleyball Legends (VBL)
--- CHANGELOG:
--- ADDING VOLLEYBALLLEGENDS
--- Option A: VBL License Key Gateway System (+24h Key & HWID Validation)
--- Option C: Universal Executor Shims (Delta, Codex, Wave, Solara, Arceus, Fluxus)
--- ==============================================================================
-
-local AUTH_API = "https://rzohub.vercel.app/api/verify.php"
-local DISCORD_URL = "https://discord.gg/vNExQNRK3"
-local GET_KEY_URL = "https://rzohub.vercel.app"
-local KEY_FOLDER = "RzoHub"
-local KEY_FILE = "RzoHub/vbl_key.txt"
-
--- Universal Executor Compatibility Helpers
-local function safeClosure(fn)
-    if newcclosure and type(newcclosure) == "function" then
-        local ok, res = pcall(newcclosure, fn)
-        if ok and res then return res end
-    end
-    return fn
-end
-
-local function getSafeGuiParent()
-    -- 1. Try executor gethui() container first
-    if gethui and type(gethui) == "function" then
-        local ok, h = pcall(gethui)
-        if ok and h and typeof(h) == "Instance" then
-            return h
-        end
-    end
-
-    -- 2. PlayerGui is GUARANTEED to render on screen on all platforms & executors
-    local lp = LocalPlayer or Players.LocalPlayer
-    if lp then
-        local pg = lp:FindFirstChild("PlayerGui") or lp:WaitForChild("PlayerGui", 5)
-        if pg then return pg end
-    end
-
-    -- 3. Last fallback: CoreGui
-    local ok, cg = pcall(function()
-        return game:GetService("CoreGui")
-    end)
-    if ok and cg then return cg end
-
-    return nil
-end
-
-local function getClipboardSafe()
-    local fn = getclipboard or (Clipboard and Clipboard.get) or (syn and syn.read_clipboard)
-    if fn and type(fn) == "function" then
-        local ok, res = pcall(fn)
-        if ok and res and tostring(res) ~= "" then
-            return tostring(res)
-        end
-    end
-    return nil
-end
-
-local function setClipboardSafe(text)
-    local fn = setclipboard or toclipboard or (Clipboard and Clipboard.set) or (syn and syn.write_clipboard)
-    if fn then
-        pcall(fn, text)
-        return true
-    end
-    return false
-end
-
-local function isFolderSafe(path)
-    if isfolder and type(isfolder) == "function" then
-        local ok, res = pcall(isfolder, path)
-        return ok and res
-    end
-    return false
-end
-
-local function makeFolderSafe(path)
-    if makefolder and type(makefolder) == "function" then
-        pcall(makefolder, path)
-    end
-end
-
-local function isFileSafe(path)
-    if isfile and type(isfile) == "function" then
-        local ok, res = pcall(isfile, path)
-        return ok and res
-    end
-    return false
-end
-
-local function readFileSafe(path)
-    if isfile and readfile and type(readfile) == "function" then
-        local ok, res = pcall(readfile, path)
-        if ok and res then return res end
-    end
-    return nil
-end
-
-local function writeFileSafe(path, text)
-    if writefile and type(writefile) == "function" then
-        pcall(writefile, path, text)
-    end
-end
-
-local function getHWID()
-    local hwidFn = gethwid or get_hwid or rbx_gethwid or (syn and syn.get_hwid)
-    if hwidFn and type(hwidFn) == "function" then
-        local ok, id = pcall(hwidFn)
-        if ok and id and tostring(id) ~= "" then
-            return tostring(id)
-        end
-    end
-    local ok, clientId = pcall(function()
-        return game:GetService("RbxAnalyticsService"):GetClientId()
-    end)
-    if ok and clientId and tostring(clientId) ~= "" then
-        return tostring(clientId)
-    end
-    local lp = game:GetService("Players").LocalPlayer
-    return tostring(lp and lp.UserId or "FALLBACK_HWID")
-end
-
-local function requestHttp(url)
-    local req = request or http_request or (syn and syn.request) or (http and http.request)
-    if req and type(req) == "function" then
-        local ok, res = pcall(req, {
-            Url = url,
-            Method = "GET",
-            Headers = {
-                ["User-Agent"] = "RzoHub-VBL-Client/1.0"
-            }
-        })
-        if ok and res then
-            local body = res.Body or res.body
-            if body and #body > 0 then
-                return body
-            end
-        end
-    end
-    local ok, res = pcall(function()
-        return game:HttpGet(url)
-    end)
-    if ok and res and #res > 0 then
-        return res
-    end
-    return nil
-end
-
-local function verifyVblKey(key)
-    if not key or #key < 8 then
-        return false, "Please enter a valid VBL key format."
-    end
-    local cleanKey = string.gsub(key, "%s+", "")
-    local hwid = getHWID()
-    
-    local HttpService = game:GetService("HttpService")
-    local query = "?key=" .. HttpService:UrlEncode(cleanKey) .. "&hwid=" .. HttpService:UrlEncode(hwid)
-    local body = requestHttp(AUTH_API .. query)
-    
-    if not body then
-        return false, "Network error: Unable to reach verification server."
-    end
-    
-    local ok, data = pcall(function()
-        return HttpService:JSONDecode(body)
-    end)
-    
-    if not ok or not data then
-        return false, "Server response error: Could not parse validation response."
-    end
-    
-    if data.valid == true or data.status == "success" then
-        return true, data
-    end
-    
-    return false, data.message or "Invalid or expired VBL license key."
-end
-
-local function launchKeyGateway(onSuccess)
-    if not isFolderSafe(KEY_FOLDER) then
-        makeFolderSafe(KEY_FOLDER)
-    end
-
-    if isFileSafe(KEY_FILE) then
-        local saved = readFileSafe(KEY_FILE)
-        if saved and #saved > 6 then
-            local valid, data = verifyVblKey(saved)
-            if valid then
-                onSuccess(saved, data)
-                return
-            end
-        end
-    end
-
-    local parent = getSafeGuiParent()
-    if not parent then
-        warn("[RZO HUB] Cannot find valid GUI parent.")
-        onSuccess(nil, nil)
-        return
-    end
-
-    local existing = parent:FindFirstChild("RzoHub_VBL_KeyGate")
-    if existing then existing:Destroy() end
-
-    local lp = LocalPlayer or game:GetService("Players").LocalPlayer
-    local pg = lp and (lp:FindFirstChild("PlayerGui") or lp:WaitForChild("PlayerGui", 5))
-    if pg and pg ~= parent then
-        local old = pg:FindFirstChild("RzoHub_VBL_KeyGate")
-        if old then old:Destroy() end
-    end
-
-    local screenGui = Instance.new("ScreenGui")
-    screenGui.Name = "RzoHub_VBL_KeyGate"
-    screenGui.ResetOnSpawn = false
-    screenGui.DisplayOrder = 999999
-    
-    local parentOk = pcall(function()
-        screenGui.Parent = parent
-    end)
-    if not parentOk or not screenGui.Parent then
-        pcall(function()
-            screenGui.Parent = pg
-        end)
-    end
-
-    local mainFrame = Instance.new("Frame")
-    mainFrame.Name = "MainFrame"
-    mainFrame.Size = UDim2.new(0, 420, 0, 260)
-    mainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
-    mainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
-    mainFrame.BackgroundColor3 = Color3.fromRGB(12, 12, 18)
-    mainFrame.BorderSizePixel = 0
-    mainFrame.Active = true
-    mainFrame.Draggable = true
-    mainFrame.Parent = screenGui
-
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 14)
-    corner.Parent = mainFrame
-
-    local stroke = Instance.new("UIStroke")
-    stroke.Color = Color3.fromRGB(60, 60, 80)
-    stroke.Thickness = 1.6
-    stroke.Parent = mainFrame
-
-    local titleLabel = Instance.new("TextLabel")
-    titleLabel.Size = UDim2.new(1, -30, 0, 28)
-    titleLabel.Position = UDim2.new(0, 16, 0, 14)
-    titleLabel.BackgroundTransparency = 1
-    titleLabel.Text = "RZO HUB"
-    titleLabel.TextColor3 = Color3.fromRGB(250, 250, 255)
-    titleLabel.Font = Enum.Font.GothamBold
-    titleLabel.TextSize = 18
-    titleLabel.TextXAlignment = Enum.TextXAlignment.Left
-    titleLabel.Parent = mainFrame
-
-    local badge = Instance.new("TextLabel")
-    badge.Size = UDim2.new(0, 95, 0, 20)
-    badge.Position = UDim2.new(1, -110, 0, 16)
-    badge.BackgroundColor3 = Color3.fromRGB(240, 240, 245)
-    badge.TextColor3 = Color3.fromRGB(10, 10, 15)
-    badge.Text = "VBL GATEWAY"
-    badge.Font = Enum.Font.Code
-    badge.TextSize = 10
-    badge.Parent = mainFrame
-
-    local badgeCorner = Instance.new("UICorner")
-    badgeCorner.CornerRadius = UDim.new(0, 4)
-    badgeCorner.Parent = badge
-
-    local subLabel = Instance.new("TextLabel")
-    subLabel.Size = UDim2.new(1, -32, 0, 18)
-    subLabel.Position = UDim2.new(0, 16, 0, 44)
-    subLabel.BackgroundTransparency = 1
-    subLabel.Text = "Masukkan key VBL 24-jam Anda untuk otentikasi"
-    subLabel.TextColor3 = Color3.fromRGB(150, 150, 170)
-    subLabel.Font = Enum.Font.Gotham
-    subLabel.TextSize = 12
-    subLabel.TextXAlignment = Enum.TextXAlignment.Left
-    subLabel.Parent = mainFrame
-
-    local inputContainer = Instance.new("Frame")
-    inputContainer.Size = UDim2.new(1, -32, 0, 40)
-    inputContainer.Position = UDim2.new(0, 16, 0, 72)
-    inputContainer.BackgroundTransparency = 1
-    inputContainer.Parent = mainFrame
-
-    local inputBox = Instance.new("TextBox")
-    inputBox.Size = UDim2.new(1, -76, 1, 0)
-    inputBox.Position = UDim2.new(0, 0, 0, 0)
-    inputBox.BackgroundColor3 = Color3.fromRGB(6, 6, 10)
-    inputBox.TextColor3 = Color3.fromRGB(245, 245, 255)
-    inputBox.Text = ""
-    inputBox.PlaceholderText = "" -- KOSONG BERSIH TANPA TEKS
-    inputBox.ClearTextOnFocus = true
-    inputBox.Font = Enum.Font.Code
-    inputBox.TextSize = 13
-    inputBox.Parent = inputContainer
-
-    local inputCorner = Instance.new("UICorner")
-    inputCorner.CornerRadius = UDim.new(0, 8)
-    inputCorner.Parent = inputBox
-
-    local inputStroke = Instance.new("UIStroke")
-    inputStroke.Color = Color3.fromRGB(50, 50, 70)
-    inputStroke.Thickness = 1.2
-    inputStroke.Parent = inputBox
-
-    inputBox.Focused:Connect(function()
-        inputBox.Text = ""
-    end)
-
-    local pasteBtn = Instance.new("TextButton")
-    pasteBtn.Size = UDim2.new(0, 68, 1, 0)
-    pasteBtn.Position = UDim2.new(1, -68, 0, 0)
-    pasteBtn.BackgroundColor3 = Color3.fromRGB(25, 25, 38)
-    pasteBtn.TextColor3 = Color3.fromRGB(240, 240, 255)
-    pasteBtn.Text = "PASTE"
-    pasteBtn.Font = Enum.Font.GothamBold
-    pasteBtn.TextSize = 12
-    pasteBtn.Parent = inputContainer
-
-    local pasteCorner = Instance.new("UICorner")
-    pasteCorner.CornerRadius = UDim.new(0, 8)
-    pasteCorner.Parent = pasteBtn
-
-    local pasteStroke = Instance.new("UIStroke")
-    pasteStroke.Color = Color3.fromRGB(70, 70, 100)
-    pasteStroke.Thickness = 1
-    pasteStroke.Parent = pasteBtn
-
-    local statusLabel = Instance.new("TextLabel")
-    statusLabel.Size = UDim2.new(1, -32, 0, 20)
-    statusLabel.Position = UDim2.new(0, 16, 0, 120)
-    statusLabel.BackgroundTransparency = 1
-    statusLabel.Text = "Status: Siap memasukkan key"
-    statusLabel.TextColor3 = Color3.fromRGB(140, 140, 160)
-    statusLabel.Font = Enum.Font.Gotham
-    statusLabel.TextSize = 11
-    statusLabel.TextXAlignment = Enum.TextXAlignment.Left
-    statusLabel.Parent = mainFrame
-
-    pasteBtn.MouseButton1Click:Connect(function()
-        local clip = getClipboardSafe()
-        if clip and #clip > 4 then
-            inputBox.Text = string.gsub(clip, "%s+", "")
-            statusLabel.Text = "Key berhasil di-paste dari clipboard!"
-            statusLabel.TextColor3 = Color3.fromRGB(130, 220, 255)
-        else
-            inputBox.Text = ""
-            statusLabel.Text = "Clipboard kosong atau tidak didukung executor."
-            statusLabel.TextColor3 = Color3.fromRGB(240, 180, 80)
-        end
-    end)
-
-    local submitBtn = Instance.new("TextButton")
-    submitBtn.Size = UDim2.new(1, -32, 0, 38)
-    submitBtn.Position = UDim2.new(0, 16, 0, 150)
-    submitBtn.BackgroundColor3 = Color3.fromRGB(245, 245, 255)
-    submitBtn.TextColor3 = Color3.fromRGB(10, 10, 15)
-    submitBtn.Text = "Verify & Engage"
-    submitBtn.Font = Enum.Font.GothamBold
-    submitBtn.TextSize = 13
-    submitBtn.Parent = mainFrame
-
-    local submitCorner = Instance.new("UICorner")
-    submitCorner.CornerRadius = UDim.new(0, 8)
-    submitCorner.Parent = submitBtn
-
-    local getKeyBtn = Instance.new("TextButton")
-    getKeyBtn.Size = UDim2.new(0.48, -20, 0, 30)
-    getKeyBtn.Position = UDim2.new(0, 16, 0, 200)
-    getKeyBtn.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
-    getKeyBtn.TextColor3 = Color3.fromRGB(220, 220, 235)
-    getKeyBtn.Text = "Get Key (Copy Link)"
-    getKeyBtn.Font = Enum.Font.GothamMedium
-    getKeyBtn.TextSize = 11
-    getKeyBtn.Parent = mainFrame
-
-    local getKeyCorner = Instance.new("UICorner")
-    getKeyCorner.CornerRadius = UDim.new(0, 6)
-    getKeyCorner.Parent = getKeyBtn
-
-    local discordBtn = Instance.new("TextButton")
-    discordBtn.Size = UDim2.new(0.48, -12, 0, 30)
-    discordBtn.Position = UDim2.new(0.52, 0, 0, 200)
-    discordBtn.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
-    discordBtn.TextColor3 = Color3.fromRGB(150, 170, 255)
-    discordBtn.Text = "Join Discord"
-    discordBtn.Font = Enum.Font.GothamMedium
-    discordBtn.TextSize = 11
-    discordBtn.Parent = mainFrame
-
-    local discordCorner = Instance.new("UICorner")
-    discordCorner.CornerRadius = UDim.new(0, 6)
-    discordCorner.Parent = discordBtn
-
-    getKeyBtn.MouseButton1Click:Connect(function()
-        setClipboardSafe(GET_KEY_URL)
-        statusLabel.Text = "Link copied! Selesaikan LootLabs untuk claim key."
-        statusLabel.TextColor3 = Color3.fromRGB(130, 200, 255)
-    end)
-
-    discordBtn.MouseButton1Click:Connect(function()
-        setClipboardSafe(DISCORD_URL)
-        statusLabel.Text = "Discord invite copied to clipboard!"
-        statusLabel.TextColor3 = Color3.fromRGB(150, 170, 255)
-    end)
-
-    local function handleKeySubmission()
-        local inputKey = string.gsub(inputBox.Text, "%s+", "")
-        if #inputKey < 6 then
-            statusLabel.Text = "Silakan masukkan atau paste key VBL Anda."
-            statusLabel.TextColor3 = Color3.fromRGB(255, 90, 100)
-            return
-        end
-
-        statusLabel.Text = "Authenticating with RZO HUB..."
-        statusLabel.TextColor3 = Color3.fromRGB(220, 220, 240)
-
-        task.spawn(function()
-            local valid, res = verifyVblKey(inputKey)
-            if valid then
-                statusLabel.Text = "Key Valid! (+24h Active) Loading RZO HUB..."
-                statusLabel.TextColor3 = Color3.fromRGB(50, 220, 130)
-                writeFileSafe(KEY_FILE, inputKey)
-                task.wait(0.4)
-                screenGui:Destroy()
-                onSuccess(inputKey, res)
-            else
-                local msg = (type(res) == "table" and res.message) or tostring(res)
-                statusLabel.Text = msg
-                statusLabel.TextColor3 = Color3.fromRGB(255, 80, 90)
-            end
-        end)
-    end
-
-    submitBtn.MouseButton1Click:Connect(handleKeySubmission)
-    inputBox.FocusLost:Connect(function(enterPressed)
-        if enterPressed then
-            handleKeySubmission()
-        end
-    end)
-end
-
-local function loadObsidianComponent(path)
-    local urls = {
-        "https://cdn.jsdelivr.net/gh/deividcomsono/Obsidian@main/" .. path,
-        "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/" .. path
-    }
-    for _, url in ipairs(urls) do
-        local ok, src = pcall(function()
-            return game:HttpGet(url)
-        end)
-        if ok and src and #src > 100 then
-            local loadOk, fn = pcall(loadstring, src)
-            if loadOk and type(fn) == "function" then
-                local execOk, res = pcall(fn)
-                if execOk and res then
-                    return res
-                end
-            end
-        end
-    end
-    error("[RZO HUB] Failed to download Obsidian component: " .. tostring(path))
-end
-
-local function LoadMainHub()
-local Library = loadObsidianComponent("Library.lua")
-local ThemeManager = loadObsidianComponent("addons/ThemeManager.lua")
-local SaveManager = loadObsidianComponent("addons/SaveManager.lua")
-
-local Options = Library.Options
-local Toggles = Library.Toggles
-
-local function notify(titleOrTable, content, duration)
-    if typeof(titleOrTable) == "table" then
-        Library:Notify({
-            Title = titleOrTable.Title or "Notification",
-            Description = titleOrTable.Content or titleOrTable.Description or "",
-            Time = titleOrTable.Duration or titleOrTable.Time or 3,
-        })
-    else
-        Library:Notify({
-            Title = tostring(titleOrTable or "Notification"),
-            Description = tostring(content or ""),
-            Time = tonumber(duration) or 3,
-        })
-    end
-end
-
-local Window = Library:CreateWindow({
-    Title = "RZO HUB - Volleyball Legends",
-    Footer = "RZO HUB | Volleyball Legends",
-    NotifySide = "Right",
-    ShowCustomCursor = true,
-})
-Window.Notify = function(self, info)
-    notify(info)
-end
-
--- ==============================================================================
--- RZO HUB - FLOATING TOGGLE BUTTON & REAL-TIME PERFORMANCE OVERLAY
--- ==============================================================================
-
-local function createFloatingToggle()
-    local parent = getSafeGuiParent()
-    if not parent then return end
-
-    local existing = parent:FindFirstChild("RzoHub_FloatingToggle")
-    if existing then existing:Destroy() end
-
-    local lp = LocalPlayer or game:GetService("Players").LocalPlayer
-    local pg = lp and (lp:FindFirstChild("PlayerGui") or lp:WaitForChild("PlayerGui", 5))
-    if pg and pg ~= parent then
-        local old = pg:FindFirstChild("RzoHub_FloatingToggle")
-        if old then old:Destroy() end
-    end
-
-    local screenGui = Instance.new("ScreenGui")
-    screenGui.Name = "RzoHub_FloatingToggle"
-    screenGui.ResetOnSpawn = false
-    screenGui.DisplayOrder = 999999
-    
-    local parentOk = pcall(function()
-        screenGui.Parent = parent
-    end)
-    if not parentOk or not screenGui.Parent then
-        pcall(function()
-            screenGui.Parent = pg
-        end)
-    end
-
-    local toggleBtn = Instance.new("TextButton")
-    toggleBtn.Name = "ToggleButton"
-    toggleBtn.Size = UDim2.new(0, 56, 0, 56)
-    toggleBtn.Position = UDim2.new(0, 18, 0.45, 0)
-    toggleBtn.BackgroundColor3 = Color3.fromRGB(15, 15, 24)
-    toggleBtn.BackgroundTransparency = 0.1
-    toggleBtn.Text = "RZO"
-    toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    toggleBtn.Font = Enum.Font.GothamBold
-    toggleBtn.TextSize = 14
-    toggleBtn.Active = true
-    toggleBtn.AutoButtonColor = true
-    toggleBtn.Parent = screenGui
-
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 16)
-    corner.Parent = toggleBtn
-
-    local stroke = Instance.new("UIStroke")
-    stroke.Color = Color3.fromRGB(90, 90, 130)
-    stroke.Thickness = 2
-    stroke.Parent = toggleBtn
-
-    local dragging = false
-    local dragStart = nil
-    local startPos = nil
-
-    toggleBtn.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = true
-            dragStart = input.Position
-            startPos = toggleBtn.Position
-            input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then
-                    dragging = false
-                end
-            end)
-        end
-    end)
-
-    toggleBtn.InputChanged:Connect(function(input)
-        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-            local delta = input.Position - dragStart
-            toggleBtn.Position = UDim2.new(
-                startPos.X.Scale,
-                startPos.X.Offset + delta.X,
-                startPos.Y.Scale,
-                startPos.Y.Offset + delta.Y
-            )
-        end
-    end)
-
-    toggleBtn.MouseButton1Click:Connect(function()
-        pcall(function()
-            if Library and Library.Toggle then
-                Library:Toggle()
-            end
-        end)
-    end)
-
-    return toggleBtn
-end
-
-pcall(createFloatingToggle)
-
-LocalPlayer.CharacterAdded:Connect(function()
-    task.wait(1)
-    pcall(createFloatingToggle)
-end)
-
--- Explicitly purge all performance overlays & lock/keybind overlays (Keep ONLY RZO toggle button)
-pcall(function()
-    if safeParent then
-        local oldPerf = safeParent:FindFirstChild("RzoHub_PerfOverlay")
-        if oldPerf then oldPerf:Destroy() end
-    end
-end)
 
 local _originalGlobalShadows = Lighting.GlobalShadows
 local _originalShadowSoftness = Lighting.ShadowSoftness
@@ -714,6 +253,9 @@ local function getGuiText(path)
     return nil
 end
 
+local LocalPlayer = Players.LocalPlayer
+local Camera = Workspace.CurrentCamera
+
 local hitboxScale = 5.0
 local hitboxColor = Color3.fromRGB(0, 255, 0)
 local hitboxColorName = "Green"
@@ -737,6 +279,10 @@ local espPlayers = {}
 local espJumpEnabled = false
 local espHighlights = {}
 local espConnections = {}
+local autoLucky = false
+local autoYen = false
+local autoAbility = false
+local autoNormal = false
 local autoSpin = false
 local autoSpinDelay = 0.1
 local autoAbilitySpin = false
@@ -763,6 +309,10 @@ local hasFiredCard = false
 local cardConnection = nil
 local cardConnection2 = nil
 local cardList = {}
+local luckySpinConnection = nil
+local yenConnection = nil
+local abilityConnection = nil
+local normalConnection = nil
 local notifConn = nil
 local notifConn2 = nil
 local leadFeetEnabled = false
@@ -771,6 +321,8 @@ local maxServeEnabled = false
 local maxServeHookActive = false
 local oldNamecallMaxServe = nil
 local mtMaxServe = nil
+local infiniteLuckyEnabled = false
+local infiniteLuckyConnection = nil
 local autoShiftLock = false
 local leadFeetButton = nil
 
@@ -809,7 +361,7 @@ local function updateNametag()
         if nameTag then
             local label = nameTag:FindFirstChild("PlayerName")
             if label and label:IsA("TextLabel") then
-                label.Text = "Anony Protect"
+                label.Text = "RZO Protect"
             end
         end
     end
@@ -839,7 +391,7 @@ local function processNotification(notification)
     if not textLabel then return end
     local text = textLabel.Text or ""
     if string.find(text, player.Name) then
-        textLabel.Text = string.gsub(text, player.Name, "Anony Protected")
+        textLabel.Text = string.gsub(text, player.Name, "RZO Protected")
     end
 end
 
@@ -870,7 +422,7 @@ local function setupNotifications()
             if not player then return end
             local text = child.Text or ""
             if string.find(text, player.Name) then
-                child.Text = string.gsub(text, player.Name, "Anony Protected")
+                child.Text = string.gsub(text, player.Name, "RZO Protected")
             end
         end
     end)
@@ -890,7 +442,7 @@ local function protectPlayerCard()
     if username and username:IsA("TextLabel") then
         local currentText = string.upper(username.Text or "")
         if string.find(currentText, playerName) then
-            username.Text = "Anony Protect"
+            username.Text = "RZO Protect"
         end
     end
 end
@@ -1060,7 +612,7 @@ local function createSpikeButton()
     return spikeButton
 end
 
--- spikeButton disabled (Free Edition)
+spikeButton = createSpikeButton()
 
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
@@ -1069,33 +621,40 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     end
 end)
 
-local _unifiedHookInstalled = false
-local _originalNamecall = nil
+local globalNamecallHooked = false
+local oldGlobalNamecall = nil
 
-local function ensureUnifiedNamecall()
-    if _unifiedHookInstalled then return true end
+local function setupUnifiedNamecallHook()
+    if globalNamecallHooked then return end
+    if type(getrawmetatable) ~= "function" or type(setreadonly) ~= "function" or type(getnamecallmethod) ~= "function" then
+        warn("[RZO HUB] Metatable hook support is unavailable on this executor.")
+        return
+    end
 
-    local function namecallHandler(self, ...)
-        local method = (getnamecallmethod and getnamecallmethod()) or ""
+    local mt = getrawmetatable(game)
+    oldGlobalNamecall = mt.__namecall
+    setreadonly(mt, false)
 
-        if BallService and BallService.RF and self == BallService.RF.Interact and method == "InvokeServer" then
-            local args = {...}
-            local data = args[1]
-            if type(data) == "table" and data.Move == "Spike" then
-                if redirectSpikeEnabled then
-                    local cam = getCurrentCamera()
-                    if cam then
-                        local dir = cam.CFrame.LookVector
-                        data.LookVector = dir
-                        data.Direction = dir
-                        if data.MoveDirection then
-                            data.MoveDirection = dir
+    local handler = function(self, ...)
+        local method = getnamecallmethod()
+        if method == "InvokeServer" then
+            if BallService and BallService:FindFirstChild("RF") and self == BallService.RF:FindFirstChild("Interact") then
+                local args = {...}
+                local data = args[1]
+                if type(data) == "table" and data.Move == "Spike" then
+                    if redirectSpikeEnabled then
+                        local cam = getCurrentCamera()
+                        if cam then
+                            local dir = cam.CFrame.LookVector
+                            data.LookVector = dir
+                            data.Direction = dir
+                            if data.MoveDirection then
+                                data.MoveDirection = dir
+                            end
                         end
                     end
-                end
 
-                if sanjuTiltEnabled then
-                    if data.TiltDirection and data.LookVector then
+                    if sanjuTiltEnabled and data.TiltDirection and data.LookVector then
                         local tiltDir = data.TiltDirection
                         if math.abs(tiltDir.X) > 0.01 or math.abs(tiltDir.Z) > 0.01 then
                             local lookVec = data.LookVector
@@ -1111,52 +670,37 @@ local function ensureUnifiedNamecall()
                             )
                         end
                     end
+
+                    if maxChargeEnabled then
+                        data.Charge = 1.0
+                        data.SpecialCharge = 1.0
+                    end
                 end
-
-                if maxChargeEnabled then
-                    data.Charge = 1.0
-                    data.SpecialCharge = 1.0
-                end
-                args[1] = data
+                return oldGlobalNamecall(self, data)
             end
-            if _originalNamecall then
-                return _originalNamecall(self, unpack(args))
+
+            if maxServeEnabled and Serve and self == Serve then
+                local args = {...}
+                args[2] = 5
+                return oldGlobalNamecall(self, unpack(args))
             end
         end
 
-        if maxServeEnabled and Serve and self == Serve and method == "InvokeServer" then
-            local args = {...}
-            args[2] = 5
-            if _originalNamecall then
-                return _originalNamecall(self, unpack(args))
-            end
-        end
-
-        if _originalNamecall then
-            return _originalNamecall(self, ...)
-        end
+        return oldGlobalNamecall(self, ...)
     end
 
-    local ok = pcall(function()
-        local wrapped = safeClosure(namecallHandler)
-        if hookmetamethod and type(hookmetamethod) == "function" then
-            _originalNamecall = hookmetamethod(game, "__namecall", wrapped)
-            _unifiedHookInstalled = true
-        elseif getrawmetatable and setreadonly then
-            local mt = getrawmetatable(game)
-            setreadonly(mt, false)
-            _originalNamecall = mt.__namecall
-            mt.__namecall = wrapped
-            setreadonly(mt, true)
-            _unifiedHookInstalled = true
-        end
-    end)
+    if type(newcclosure) == "function" then
+        mt.__namecall = newcclosure(handler)
+    else
+        mt.__namecall = handler
+    end
 
-    return ok and _unifiedHookInstalled
+    setreadonly(mt, true)
+    globalNamecallHooked = true
 end
 
 local function enableRedirectSpike()
-    ensureUnifiedNamecall()
+    setupUnifiedNamecallHook()
     redirectSpikeEnabled = true
 end
 
@@ -1165,7 +709,7 @@ local function disableRedirectSpike()
 end
 
 local function enableSanjuTilt()
-    ensureUnifiedNamecall()
+    setupUnifiedNamecallHook()
     sanjuTiltEnabled = true
 end
 
@@ -1174,7 +718,7 @@ local function disableSanjuTilt()
 end
 
 local function enableMaxCharge()
-    ensureUnifiedNamecall()
+    setupUnifiedNamecallHook()
     maxChargeEnabled = true
 end
 
@@ -1243,7 +787,7 @@ local function createNewSpikeButton()
     return newSpikeButton
 end
 
--- newSpikeButton disabled (Free Edition)
+newSpikeButton = createNewSpikeButton()
 
 local function enableDesync()
     if desyncConnection then return end
@@ -1767,6 +1311,24 @@ local function startAutoAbilitySpin()
     end)()
 end
 
+local function startInfiniteLucky()
+    coroutine.wrap(function()
+        while infiniteLuckyEnabled do
+            local SeasonService = getKnitService("SeasonService")
+            if SeasonService then
+                local RF = SeasonService:FindFirstChild("RF")
+                if RF then
+                    local RequestRankedReward = RF:FindFirstChild("RequestRankedReward")
+                    if RequestRankedReward then
+                        safeInvoke(RequestRankedReward, 1)
+                    end
+                end
+            end
+            task.wait(autoSpinDelay)
+        end
+    end)()
+end
+
 local function enableHitEffect()
     if hitConnection then return end
     hasFired = false
@@ -1928,21 +1490,15 @@ local function disablePlayerCard()
 end
 
 local function enableMaxServe()
-    if not Serve then
-        warn("[RZO HUB] Serve RemoteFunction not found.")
-        return
-    end
-    ensureUnifiedNamecall()
-    maxServeHookActive = true
+    setupUnifiedNamecallHook()
     maxServeEnabled = true
 end
 
 local function disableMaxServe()
-    maxServeHookActive = false
     maxServeEnabled = false
 end
 
-local function -- createLeadFeetButton disabled (Free Edition)
+local function createLeadFeetButton()
     local screenGui = Instance.new("ScreenGui")
     screenGui.Name = "LeadFeetGUI"
     screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
@@ -2006,7 +1562,7 @@ local function -- createLeadFeetButton disabled (Free Edition)
     return leadFeetButton
 end
 
--- createLeadFeetButton disabled (Free Edition)
+createLeadFeetButton()
 
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
@@ -2033,49 +1589,325 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     end
 end)
 
--- [[ UI INITIALIZATION - OBSIDIAN ]]
+local function setupCharacter(character)
+    local humanoid = character:WaitForChild("Humanoid")
+    local rootPart = character:WaitForChild("HumanoidRootPart")
+    humanoid:GetPropertyChangedSignal("Jump"):Connect(function()
+        if humanoid.Jump then
+            if autoShiftLock then
+                task.defer(function()
+                    task.wait(0.03)
+                    local lookVector = Vector3.new(Camera.CFrame.LookVector.X, 0, Camera.CFrame.LookVector.Z)
+                    if lookVector.Magnitude > 0 then
+                        rootPart.CFrame = CFrame.lookAt(rootPart.Position, rootPart.Position + lookVector.Unit)
+                        humanoid.AutoRotate = false
+                    end
+                end)
+            else
+                humanoid.AutoRotate = true
+            end
+        end
+    end)
+end
+
+if LocalPlayer.Character then
+    setupCharacter(LocalPlayer.Character)
+end
+LocalPlayer.CharacterAdded:Connect(setupCharacter)
+
+local function stableCleanup()
+    pcall(disableRedirectSpike)
+    pcall(disableSanjuTilt)
+    pcall(disableMaxCharge)
+    pcall(disableMaxServe)
+    pcall(disableDesync)
+    pcall(disableAutoReceive)
+    pcall(disableHitEffect)
+    pcall(disablePlayerCard)
+    if bodyVelocity then
+        pcall(function() bodyVelocity:Destroy() end)
+        bodyVelocity = nil
+    end
+    if infiniteLuckyConnection then pcall(task.cancel, infiniteLuckyConnection) infiniteLuckyConnection = nil end
+    if luckySpinConnection then pcall(task.cancel, luckySpinConnection) luckySpinConnection = nil end
+    if yenConnection then pcall(task.cancel, yenConnection) yenConnection = nil end
+    if abilityConnection then pcall(task.cancel, abilityConnection) abilityConnection = nil end
+    if normalConnection then pcall(task.cancel, normalConnection) normalConnection = nil end
+    removeHitboxes()
+    for player in pairs(espHighlights) do pcall(removeESP, player) end
+    for player in pairs(espPlayers) do pcall(removeESP2, player) end
+end
+
+-- =============================================================================
+-- OBSIDIAN TABS DECLARATION & KEY AUTH GATE
+-- =============================================================================
 local Tabs = {
-    Main = Window:AddTab("Main", "crosshair"),
+    Key = Window:AddTab("Key System", "key"),
+    Main = Window:AddTab("Main", "swords"),
     Character = Window:AddTab("Character", "user"),
-    Misc = Window:AddTab("Misc", "settings"),
+    Visuals = Window:AddTab("Visuals", "eye"),
+    Misc = Window:AddTab("Misc", "sparkles"),
     GameJoin = Window:AddTab("Game Join", "gamepad-2"),
-    Changelogs = Window:AddTab("Changelogs", "file-text"),
-    ["UI Settings"] = Window:AddTab("UI Settings", "sliders"),
+    ["UI Settings"] = Window:AddTab("UI Settings", "wrench"),
 }
 
--- Main Tab Groupboxes
-local MainLeft = Tabs.Main:AddGroupbox({ Side = "Left", Name = "Spike Settings", IconName = "zap" })
-local MainRight = Tabs.Main:AddGroupbox({ Side = "Right", Name = "Hitbox Settings", IconName = "box" })
-local MainPerf = Tabs.Main:AddGroupbox({ Side = "Left", Name = "Performance & Movement", IconName = "activity" })
-local MainServe = Tabs.Main:AddGroupbox({ Side = "Right", Name = "Serve Settings", IconName = "sparkles" })
+local function lockFeatureTabs()
+    Tabs.Main:SetVisible(false)
+    Tabs.Character:SetVisible(false)
+    Tabs.Visuals:SetVisible(false)
+    Tabs.Misc:SetVisible(false)
+    Tabs.GameJoin:SetVisible(false)
+    Tabs["UI Settings"]:SetVisible(false)
+    Tabs.Key:SetVisible(true)
+    Tabs.Key:Show()
+end
 
--- Spike Settings (Free Edition)
-MainLeft:AddToggle("sanju", {
+local function unlockFeatureTabs(licenseData)
+    isKeyAuthenticated = true
+    currentLicenseData = licenseData
+    Tabs.Main:SetVisible(true)
+    Tabs.Character:SetVisible(true)
+    Tabs.Visuals:SetVisible(true)
+    Tabs.Misc:SetVisible(true)
+    Tabs.GameJoin:SetVisible(true)
+    Tabs["UI Settings"]:SetVisible(true)
+    Tabs.Key:SetVisible(false)
+    Tabs.Main:Show()
+end
+
+-- -----------------------------------------------------------------------------
+-- TAB 0: KEY SYSTEM (rzo-key-auth)
+-- -----------------------------------------------------------------------------
+local KeyAuthGroup = Tabs.Key:AddLeftGroupbox("VBL License Checkpoint")
+local KeyInfoGroup = Tabs.Key:AddRightGroupbox("How to Get Key")
+
+local inputKeyBoxValue = ""
+
+KeyAuthGroup:AddInput("LicenseKeyInput", {
+    Text = "License Key",
+    Default = "",
+    Placeholder = "VBL-XXXX-XXXX-XXXX-XXXX",
+    Callback = function(v)
+        inputKeyBoxValue = v
+    end
+})
+
+KeyAuthGroup:AddButton({
+    Text = "Verify Key",
+    Func = function()
+        local keyToTest = inputKeyBoxValue
+        if not keyToTest or keyToTest:gsub("%s+", "") == "" then
+            notify("Key System", "Please type or paste your key into the box above.", 3)
+            return
+        end
+
+        notify("Key System", "Contacting authentication server...", 2)
+        local valid, code, result = verifyLicenseKey(keyToTest)
+        if valid then
+            pcall(function()
+                if writefile then
+                    writefile(AUTH_CONFIG.KeyFile, keyToTest:gsub("%s+", ""))
+                end
+            end)
+            notify("Access Granted", "Key verified! Welcome, " .. tostring(result.user) .. "!\nExpires: " .. tostring(result.expires_at), 4)
+            unlockFeatureTabs(result)
+        else
+            notify("Verification Failed", tostring(result or code), 4)
+        end
+    end
+})
+
+KeyAuthGroup:AddButton({
+    Text = "Paste From Clipboard",
+    Func = function()
+        local clip = nil
+        pcall(function()
+            if getclipboard then
+                clip = getclipboard()
+            end
+        end)
+        if clip and #clip > 3 then
+            inputKeyBoxValue = clip
+            if Options.LicenseKeyInput then
+                Options.LicenseKeyInput:SetValue(clip)
+            end
+            notify("Clipboard", "Key pasted! Click 'Verify Key' to activate.", 2)
+        else
+            notify("Clipboard", "Clipboard is empty or unsupported on your executor.", 2)
+        end
+    end
+})
+
+KeyAuthGroup:AddButton({
+    Text = "Check Saved Key",
+    Func = function()
+        local saved = nil
+        pcall(function()
+            if isfile and isfile(AUTH_CONFIG.KeyFile) then
+                saved = readfile(AUTH_CONFIG.KeyFile)
+            end
+        end)
+        if saved and saved:gsub("%s+", "") ~= "" then
+            notify("Key System", "Validating saved key...", 2)
+            local valid, code, result = verifyLicenseKey(saved)
+            if valid then
+                notify("Access Granted", "Saved key verified! Welcome, " .. tostring(result.user), 4)
+                unlockFeatureTabs(result)
+            else
+                notify("Key Expired", tostring(result or code), 4)
+            end
+        else
+            notify("Key System", "No saved key found on device.", 2)
+        end
+    end
+})
+
+-- Right side: Get Key via LootLabs and community links
+KeyInfoGroup:AddButton({
+    Text = "Get 24h Key (Copy Link)",
+    Func = function()
+        local url = AUTH_CONFIG.Domain .. "/get_key.php"
+        copyToClipboard(url)
+        notify("Link Copied!", "Open browser, complete LootLabs, and claim your key.", 4)
+    end
+})
+
+KeyInfoGroup:AddButton({
+    Text = "Web Dashboard (Copy Link)",
+    Func = function()
+        local url = AUTH_CONFIG.Domain .. "/dashboard.php"
+        copyToClipboard(url)
+        notify("Dashboard Copied!", "Manage HWID resets or view your active key.", 3)
+    end
+})
+
+KeyInfoGroup:AddButton({
+    Text = "Join Discord Community",
+    Func = function()
+        copyToClipboard(AUTH_CONFIG.Discord)
+        notify("Discord Copied!", "Invite copied to clipboard: " .. AUTH_CONFIG.Discord, 3)
+    end
+})
+
+KeyInfoGroup:AddLabel("1. Click 'Get 24h Key (Copy Link)'.")
+KeyInfoGroup:AddLabel("2. Open browser, login / register.")
+KeyInfoGroup:AddLabel("3. Complete LootLabs tasks.")
+KeyInfoGroup:AddLabel("4. Copy key from Dashboard & paste here.")
+
+-- -----------------------------------------------------------------------------
+-- TAB 1: MAIN
+-- -----------------------------------------------------------------------------
+local SpikeGroup = Tabs.Main:AddLeftGroupbox("Spike Settings")
+
+SpikeGroup:AddToggle("SilentSpike", {
+    Text = "Silent Spike",
+    Default = false,
+    Tooltip = "Show quick Spike button",
+    Callback = function(v)
+        silentSpikeEnabled = v
+        if spikeButton then
+            spikeButton.Visible = v
+        end
+    end
+})
+
+SpikeGroup:AddToggle("RedirectSpike", {
+    Text = "Redirect Spike",
+    Default = false,
+    Tooltip = "Redirect spike trajectory to camera direction",
+    Callback = function(v)
+        if v then
+            enableRedirectSpike()
+        else
+            disableRedirectSpike()
+        end
+    end
+})
+
+SpikeGroup:AddToggle("NewSilentSpike", {
+    Text = "New Silent Spike",
+    Default = false,
+    Tooltip = "Display new spike overlay button",
+    Callback = function(v)
+        newSilentSpikeEnabled = v
+        if newSpikeButton then
+            newSpikeButton.Visible = v
+        end
+    end
+})
+
+SpikeGroup:AddToggle("SanjuTilt", {
     Text = "Sanju Tilt",
     Default = false,
+    Tooltip = "Angle-boosted spike tilt physics",
     Callback = function(v)
         if v then
             enableSanjuTilt()
         else
             disableSanjuTilt()
         end
-    end,
+    end
 })
 
-MainLeft:AddToggle("maxcharge", {
-    Text = "Max Charge Special (Ronin)",
+SpikeGroup:AddToggle("MaxCharge", {
+    Text = "Max Charge Special",
     Default = false,
+    Tooltip = "Forces maximum special charge on every spike",
     Callback = function(v)
         if v then
             enableMaxCharge()
         else
             disableMaxCharge()
         end
-    end,
+    end
 })
 
--- Hitbox Settings
-MainRight:AddSlider("hitboxsize", {
+local ServeGroup = Tabs.Main:AddLeftGroupbox("Max Serve & Data")
+
+ServeGroup:AddToggle("MaxServe", {
+    Text = "Max Serve",
+    Default = false,
+    Tooltip = "Forces maximum serve power level 5",
+    Callback = function(v)
+        if v then
+            enableMaxServe()
+            notify("Max Serve", "ENABLED", 2)
+        else
+            disableMaxServe()
+            notify("Max Serve", "DISABLED", 2)
+        end
+    end
+})
+
+ServeGroup:AddToggle("LeadFeet", {
+    Text = "Lead Feet",
+    Default = false,
+    Tooltip = "Snap instantly to floor when pressing R",
+    Callback = function(v)
+        leadFeetEnabled = v
+        if leadFeetButton then
+            leadFeetButton.Visible = v
+        end
+        notify("Lead Feet", v and "ENABLED" or "DISABLED", 2)
+    end
+})
+
+ServeGroup:AddButton({
+    Text = "Data Rollback",
+    Func = function()
+        local remote = getKnitService("SettingsService")
+        local rf = remote and remote:FindFirstChild("RF") and remote.RF:FindFirstChild("UpdateKeybind")
+        if rf then
+            rf:InvokeServer("MouseButton1", true, "Spike\xE2\x80\x8B\x8F")
+        end
+        notify("Data Rollback", "Executed! Rejoining...", 2)
+        TeleportService:Teleport(game.PlaceId)
+    end
+})
+
+local HitboxGroup = Tabs.Main:AddRightGroupbox("Hitbox Settings")
+
+HitboxGroup:AddSlider("HitboxSize", {
     Text = "Hitbox Size",
     Default = 5,
     Min = 0,
@@ -2084,13 +1916,14 @@ MainRight:AddSlider("hitboxsize", {
     Callback = function(v)
         hitboxScale = v
         updateHitboxes(v)
-    end,
+    end
 })
 
-MainRight:AddDropdown("hitboxcolor", {
-    Text = "Hitbox Color",
+HitboxGroup:AddDropdown("HitboxColor", {
     Values = {"Green", "Blue", "Red", "Yellow", "Purple", "Orange", "Pink", "White"},
-    Default = "Green",
+    Default = 1,
+    Multi = false,
+    Text = "Hitbox Color",
     Callback = function(v)
         local colors = {
             Green = Color3.fromRGB(0, 255, 0),
@@ -2100,24 +1933,24 @@ MainRight:AddDropdown("hitboxcolor", {
             Purple = Color3.fromRGB(128, 0, 128),
             Orange = Color3.fromRGB(255, 165, 0),
             Pink = Color3.fromRGB(255, 105, 180),
-            White = Color3.fromRGB(255, 255, 255),
+            White = Color3.fromRGB(255, 255, 255)
         }
         hitboxColor = colors[v] or Color3.fromRGB(0, 255, 0)
         hitboxColorName = v
         updateHitboxes(hitboxScale)
-    end,
+    end
 })
 
-MainRight:AddButton({
+HitboxGroup:AddButton({
     Text = "Remove Hitboxes",
     Func = function()
         removeHitboxes()
         notify("Hitboxes Removed", "All hitboxes cleared", 2)
-    end,
+    end
 })
 
-MainRight:AddButton({
-    Text = "Show / Hide Stop Ball",
+HitboxGroup:AddButton({
+    Text = "Show Stop Ball",
     Func = function()
         stopBallVisible = not stopBallVisible
         if stopBallButton then
@@ -2126,11 +1959,11 @@ MainRight:AddButton({
             stopBallButton = createStopBallButton()
         end
         notify("Stop Ball", stopBallVisible and "SHOWN" or "HIDDEN", 2)
-    end,
+    end
 })
 
-MainRight:AddButton({
-    Text = "Show / Hide Aim",
+HitboxGroup:AddButton({
+    Text = "Show Aim",
     Func = function()
         aimVisible = not aimVisible
         if aimButton then
@@ -2139,13 +1972,15 @@ MainRight:AddButton({
             aimButton = createAimButton()
         end
         notify("Aim", aimVisible and "SHOWN" or "HIDDEN", 2)
-    end,
+    end
 })
 
--- Performance & Movement
-MainPerf:AddToggle("antilag", {
+local MovePerfGroup = Tabs.Main:AddRightGroupbox("Movement & Performance")
+
+MovePerfGroup:AddToggle("AntiLag", {
     Text = "Anti-Lag",
     Default = false,
+    Tooltip = "Optimizes shadows and lighting for max FPS",
     Callback = function(v)
         if v then
             pcall(function()
@@ -2175,12 +2010,13 @@ MainPerf:AddToggle("antilag", {
             end)
             notify("Anti-Lag", "DISABLED", 2)
         end
-    end,
+    end
 })
 
-MainPerf:AddToggle("desync", {
+MovePerfGroup:AddToggle("Desync", {
     Text = "Desync",
     Default = false,
+    Tooltip = "Desynchronizes character jump state via spoofed Dive event",
     Callback = function(v)
         if v then
             enableDesync()
@@ -2189,12 +2025,13 @@ MainPerf:AddToggle("desync", {
             disableDesync()
             notify("Desync", "DISABLED", 2)
         end
-    end,
+    end
 })
 
-MainPerf:AddToggle("autoreceive", {
+MovePerfGroup:AddToggle("AutoReceive", {
     Text = "Auto Receive",
     Default = false,
+    Tooltip = "Automatically dives when ball is within 10 studs",
     Callback = function(v)
         if v then
             enableAutoReceive()
@@ -2203,266 +2040,451 @@ MainPerf:AddToggle("autoreceive", {
             disableAutoReceive()
             notify("Auto Receive", "DISABLED", 2)
         end
-    end,
+    end
 })
 
-MainPerf:AddToggle("akaridash", {
+MovePerfGroup:AddToggle("AkariDash", {
     Text = "Akari Dash",
     Default = false,
+    Tooltip = "On-screen button for Akari dash action",
     Callback = function(v)
         akariDashEnabled = v
         if dashButton then
             dashButton.Visible = v
         end
         notify("Akari Dash", v and "ENABLED" or "DISABLED", 2)
-    end,
+    end
 })
 
--- Serve Settings (Free Edition)
-MainServe:AddToggle("maxserve", {
-    Text = "Max Serve",
+local CosmeticGroup = Tabs.Main:AddRightGroupbox("Visual & Cosmetics")
+
+CosmeticGroup:AddToggle("ScoreEffect", {
+    Text = "ScoreEffect Changer",
     Default = false,
+    Tooltip = "Overrides your score explosion effect",
     Callback = function(v)
+        hitEffectEnabled = v
         if v then
-            enableMaxServe()
-            notify("Max Serve", "ENABLED", 2)
+            enableHitEffect()
+            notify("ScoreEffect Changer", "ENABLED", 2)
         else
-            disableMaxServe()
-            notify("Max Serve", "DISABLED", 2)
+            disableHitEffect()
+            notify("ScoreEffect Changer", "DISABLED", 2)
         end
-    end,
+    end
 })
 
--- Character Tab Groupboxes
-local CharLeft = Tabs.Character:AddGroupbox({ Side = "Left", Name = "Attributes", IconName = "sliders-horizontal" })
-local CharRight = Tabs.Character:AddGroupbox({ Side = "Right", Name = "Movement", IconName = "move" })
+CosmeticGroup:AddDropdown("EffectSelect", {
+    Values = #effectList > 0 and effectList or {"No Effects Found"},
+    Default = 1,
+    Multi = false,
+    Text = "Effect Select",
+    Callback = function(v)
+        selectedEffect = v
+        notify("Effect Changed", "Set to " .. tostring(v), 2)
+    end
+})
 
-CharLeft:AddInput("divespeed", {
+CosmeticGroup:AddToggle("PlayerCard", {
+    Text = "PlayerCard Changer",
+    Default = false,
+    Tooltip = "Overrides your displayed player banner card",
+    Callback = function(v)
+        playerCardEnabled = v
+        if v then
+            enablePlayerCard()
+            notify("PlayerCard Changer", "ENABLED", 2)
+        else
+            disablePlayerCard()
+            notify("PlayerCard Changer", "DISABLED", 2)
+        end
+    end
+})
+
+CosmeticGroup:AddDropdown("CardSelect", {
+    Values = #cardList > 0 and cardList or {"No Cards Found"},
+    Default = 1,
+    Multi = false,
+    Text = "Card Select",
+    Callback = function(v)
+        selectedCard = v
+        notify("Card Changed", "Set to " .. tostring(v), 2)
+    end
+})
+
+CosmeticGroup:AddButton({
+    Text = "Unlock All Ball",
+    Func = function()
+        if type(require) ~= "function" or type(hookfunction) ~= "function" or type(getgc) ~= "function" then
+            notify("Unlock All Ball", "Executor hook support is unavailable.", 3)
+            return
+        end
+        local RS = game:GetService("ReplicatedStorage")
+        local Item = require(RS.Content.Item)
+        local Knit = require(RS.Packages.Knit)
+        local InventoryController = Knit.GetController("InventoryController")
+        local InventoryService = Knit.GetService("InventoryService")
+        local InventoryValue = InventoryController.Inventory
+        local inv = InventoryValue:get()
+        local isEquipped = require(game.ReplicatedFirst.Controllers.InventoryController.IsEquipped)
+        local toggled = {}
+        local Items = {}
+        local allBalls = Item:GetAllFromType(Item.Type.Ball)
+        for _, ball in pairs(allBalls) do
+            Items[ball.Id] = true
+            inv[ball.Id] = 1
+        end
+        InventoryValue:set(inv)
+        local old3
+        old3 = hookfunction(isEquipped, function(item, equippedTable, selected)
+            if Items[selected] and toggled[selected] ~= nil then
+                return toggled[selected]
+            end
+            return old3(item, equippedTable, selected)
+        end)
+        local old2
+        old2 = hookfunction(InventoryService.Equip, function(self, id)
+            local result = old2(self, id)
+            if Items[id] then
+                for k, _ in pairs(toggled) do
+                    toggled[k] = nil
+                end
+                toggled[id] = true
+                local eq = InventoryController.Equipped:get()
+                InventoryController.Equipped:set(eq)
+            end
+            return result
+        end)
+        local fakeEntries = {}
+        for _, ball in pairs(allBalls) do
+            table.insert(fakeEntries, {Name = ball.Id, Item = ball, Count = 1, IsRandom = false})
+        end
+        for _, func in getgc() do
+            if typeof(func) == "function" then
+                local env = getfenv(func)
+                local scr = env and tostring(env.script) or ""
+                if scr == "buildEntries" then
+                    local old
+                    old = hookfunction(func, function(p1, p2)
+                        if p1 and p1.ItemType == Item.Type.Ball then
+                            return fakeEntries
+                        end
+                        return old(p1, p2)
+                    end)
+                end
+                if scr == "BallController" then
+                    local old4
+                    old4 = hookfunction(func, function(p1)
+                        if p1 and not workspace:FindFirstChild("CLIENT_BALL_" .. tostring(p1.ID)) and p1.Skin then
+                            for name, isToggled in pairs(toggled) do
+                                if isToggled then
+                                    p1.Skin = name
+                                    break
+                                end
+                            end
+                        end
+                        return old4(p1)
+                    end)
+                end
+            end
+        end
+        notify("Unlock All Ball", "All balls unlocked!", 2)
+    end
+})
+
+CosmeticGroup:AddToggle("ESP", {
+    Text = "ESP",
+    Default = false,
+    Tooltip = "Box and Tracer ESP on other players",
+    Callback = function(v)
+        espEnabled = v
+        if v then
+            for _, player in ipairs(Players:GetPlayers()) do
+                if player ~= LocalPlayer then
+                    task.spawn(createESP, player)
+                end
+            end
+            Players.PlayerAdded:Connect(function(player)
+                task.spawn(createESP, player)
+            end)
+        else
+            for player in pairs(espPlayers) do
+                removeESP2(player)
+            end
+        end
+    end
+})
+
+-- -----------------------------------------------------------------------------
+-- TAB 2: CHARACTER
+-- -----------------------------------------------------------------------------
+local AttrGroup = Tabs.Character:AddLeftGroupbox("Attributes")
+
+AttrGroup:AddInput("DiveSpeed", {
     Text = "Dive Speed",
+    Default = "0.95",
+    Numeric = true,
     Placeholder = "0.95",
-    Finished = false,
     Callback = function(v)
         local num = tonumber(v)
         if num then
             LocalPlayer:SetAttribute("Multiplier_DiveSpeed", num)
         end
-    end,
+    end
 })
 
-CharLeft:AddInput("jumppower", {
+AttrGroup:AddInput("JumpPower", {
     Text = "Jump Power",
+    Default = "1.1",
+    Numeric = true,
     Placeholder = "1.1",
-    Finished = false,
     Callback = function(v)
         local num = tonumber(v)
         if num then
             LocalPlayer:SetAttribute("Multiplier_JumpPower", num)
         end
-    end,
+    end
 })
 
-CharLeft:AddInput("speed", {
+AttrGroup:AddInput("Speed", {
     Text = "Speed",
+    Default = "0.85",
+    Numeric = true,
     Placeholder = "0.85",
-    Finished = false,
     Callback = function(v)
         local num = tonumber(v)
         if num then
             LocalPlayer:SetAttribute("Multiplier_Speed", num)
         end
-    end,
+    end
 })
 
-CharRight:AddToggle("airmove", {
+local CharMoveGroup = Tabs.Character:AddRightGroupbox("Movement")
+
+CharMoveGroup:AddToggle("AirMovement", {
     Text = "Air Movement",
     Default = false,
+    Tooltip = "Fly / directional velocity while airborne",
     Callback = function(v)
         airMovement = v
         if not v and bodyVelocity then
             bodyVelocity:Destroy()
             bodyVelocity = nil
         end
-    end,
+    end
 })
 
-CharRight:AddSlider("airspeed", {
+CharMoveGroup:AddSlider("AirSpeed", {
     Text = "Air Movement Speed",
     Default = 16,
     Min = 0,
     Max = 100,
-    Rounding = 0,
+    Rounding = 1,
     Callback = function(v)
         airMovementSpeed = v
-    end,
+    end
 })
 
--- Auto Shift Lock (Original Implementation - Zero AutoRotate)
-local autoShiftLock = false
-
-CharRight:AddToggle("autoshiftlock", {
+CharMoveGroup:AddToggle("AutoShiftLock", {
     Text = "Auto Shift Lock",
     Default = false,
+    Tooltip = "Forces camera orientation lock on jump",
     Callback = function(v)
         autoShiftLock = v
+        local character = LocalPlayer.Character
+        if character then
+            local humanoid = character:FindFirstChild("Humanoid")
+            if humanoid then
+                humanoid.AutoRotate = not v
+            end
+        end
         notify("Auto Shift Lock", v and "ENABLED" or "DISABLED", 2)
-    end,
+    end
 })
 
-local function setupCharacter(character)
-    local humanoid = character:WaitForChild("Humanoid")
-    local rootPart = character:WaitForChild("HumanoidRootPart")
-    humanoid:GetPropertyChangedSignal("Jump"):Connect(function()
-        if humanoid.Jump then
-            if autoShiftLock then
-                task.defer(function()
-                    task.wait(0.03)
-                    local lookVector = Vector3.new(Camera.CFrame.LookVector.X, 0, Camera.CFrame.LookVector.Z)
-                    if lookVector.Magnitude > 0 then
-                        rootPart.CFrame = CFrame.lookAt(rootPart.Position, rootPart.Position + lookVector.Unit)
+-- -----------------------------------------------------------------------------
+-- TAB 3: VISUALS
+-- -----------------------------------------------------------------------------
+local VisualESPGroup = Tabs.Visuals:AddLeftGroupbox("ESP")
+
+VisualESPGroup:AddToggle("ESPJump", {
+    Text = "ESP (Jump)",
+    Default = false,
+    Tooltip = "Highlights players when they jump",
+    Callback = function(v)
+        espJumpEnabled = v
+        if not v then
+            for player in pairs(espHighlights) do
+                removeESP(player)
+            end
+        end
+    end
+})
+
+local CameraGroup = Tabs.Visuals:AddRightGroupbox("Camera & World")
+
+CameraGroup:AddSlider("POV", {
+    Text = "Field of View",
+    Default = 70,
+    Min = 1,
+    Max = 120,
+    Rounding = 0,
+    Callback = function(v)
+        workspace.CurrentCamera.FieldOfView = v
+    end
+})
+
+CameraGroup:AddButton({
+    Text = "Rejoin Server",
+    Func = function()
+        TeleportService:Teleport(game.PlaceId)
+    end
+})
+
+-- -----------------------------------------------------------------------------
+-- TAB 4: MISC
+-- -----------------------------------------------------------------------------
+local FarmGroup = Tabs.Misc:AddLeftGroupbox("Infinite Lucky & Currency")
+
+FarmGroup:AddToggle("InfiniteLuckyStyle", {
+    Text = "Style Spin Farm",
+    Default = false,
+    Tooltip = "Continuous loop claiming season style roll",
+    Callback = function(v)
+        infiniteLuckyEnabled = v
+        if v then
+            if infiniteLuckyConnection then return end
+            infiniteLuckyConnection = task.spawn(function()
+                local SeasonService = getKnitService("SeasonService")
+                while infiniteLuckyEnabled do
+                    if SeasonService then
+                        local RF = SeasonService:FindFirstChild("RF")
+                        if RF then
+                            local RequestRankedReward = RF:FindFirstChild("RequestRankedReward")
+                            if RequestRankedReward then
+                                safeInvoke(RequestRankedReward, 1)
+                            end
+                        end
                     end
-                end)
-            end
-        end
-    end)
-end
-
-if LocalPlayer.Character then
-    setupCharacter(LocalPlayer.Character)
-end
-LocalPlayer.CharacterAdded:Connect(setupCharacter)
-
--- Visuals Tab removed for Free Edition
-
--- Misc Tab Groupboxes
-Tabs.Misc:UpdateWarningBox({
-    Visible = true,
-    Title = "DATA ROLLBACK WARNING",
-    Text = "Perhatian: Gunakan MINIMAL 10 spin saat melakukan rollback, jangan lebih! Use at your own risk.",
-})
-
-local MiscRollback = Tabs.Misc:AddGroupbox({ Side = "Left", Name = "Data Rollback", IconName = "database" })
-local MiscShop = Tabs.Misc:AddGroupbox({ Side = "Right", Name = "Shop", IconName = "shopping-cart" })
-local MiscStyleSpin = Tabs.Misc:AddGroupbox({ Side = "Left", Name = "Auto Style Spin", IconName = "rotate-cw" })
-local MiscAbilitySpin = Tabs.Misc:AddGroupbox({ Side = "Right", Name = "Auto Ability Spin", IconName = "sparkle" })
-local MiscRewards = Tabs.Misc:AddGroupbox({ Side = "Left", Name = "Claim Rewards", IconName = "gift" })
-
-MiscRollback:AddLabel("Pemberitahuan:\n- Minimal gunakan 10 spin (jangan lebih!)\n- Use at your own risk!", true)
-
-MiscRollback:AddButton({
-    Text = "Execute Data Rollback",
-    Func = function()
-        local Remote = game:GetService("ReplicatedStorage")
-            :WaitForChild("Packages")
-            :WaitForChild("_Index")
-            :WaitForChild("sleitnick_knit@1.7.0")
-            :WaitForChild("knit")
-            :WaitForChild("Services")
-            :WaitForChild("SettingsService")
-            :WaitForChild("RF")
-            :WaitForChild("UpdateKeybind")
-        Remote:InvokeServer("MouseButton1", true, "Spike\xE2\x80\x8B\x8F")
-        notify("Data Rollback", "Executed! Rejoining...", 2)
-        game:GetService("TeleportService"):Teleport(game.PlaceId)
-    end,
-})
-
-MiscStyleSpin:AddToggle("autostyle", {
-    Text = "Auto Style Spin",
-    Default = false,
-    Callback = function(v)
-        autoSpin = v
-        if v then
-            startAutoSpin()
-        end
-    end,
-})
-
-MiscStyleSpin:AddDropdown("spintype", {
-    Text = "Spin Type",
-    Values = {"Normal", "Lucky"},
-    Default = "Normal",
-    Callback = function(v)
-        spinType = v
-    end,
-})
-
-MiscStyleSpin:AddInput("targetstyle", {
-    Text = "Target Style",
-    Placeholder = "Sanju",
-    Finished = false,
-    Callback = function(v)
-        desiredStyles = {v}
-        notify("Target Set", "Target style: " .. tostring(v), 2)
-    end,
-})
-
-MiscStyleSpin:AddButton({
-    Text = "Instant Spin",
-    Func = function()
-        local args = { [1] = (spinType == "Lucky") }
-        local StyleService = getKnitService("StyleService")
-        if StyleService then
-            local RF = StyleService:FindFirstChild("RF")
-            if RF then
-                local Roll = RF:FindFirstChild("Roll")
-                if Roll then
-                    safeInvoke(Roll, unpack(args))
-                    notify("Instant Spin", "Style spin executed! (" .. spinType .. ")", 2)
+                    task.wait(autoSpinDelay)
                 end
+            end)
+            notify("Infinite Lucky", "ENABLED", 2)
+        else
+            if infiniteLuckyConnection then
+                task.cancel(infiniteLuckyConnection)
+                infiniteLuckyConnection = nil
             end
+            notify("Infinite Lucky", "DISABLED", 2)
         end
-    end,
+    end
 })
 
-MiscAbilitySpin:AddToggle("autoabilityspin", {
-    Text = "Auto Ability Spin",
+FarmGroup:AddToggle("AutoYen", {
+    Text = "Yen Farm",
     Default = false,
+    Tooltip = "Continuous loop claiming season Yen rewards",
     Callback = function(v)
-        autoAbilitySpin = v
+        autoYen = v
         if v then
-            startAutoAbilitySpin()
-        end
-    end,
-})
-
-MiscAbilitySpin:AddDropdown("abilityspintype", {
-    Text = "Ability Spin Type",
-    Values = {"Normal", "Lucky"},
-    Default = "Normal",
-    Callback = function(v)
-        abilitySpinType = v
-    end,
-})
-
-MiscAbilitySpin:AddInput("targetability", {
-    Text = "Target Ability",
-    Placeholder = "Shield Breaker",
-    Finished = false,
-    Callback = function(v)
-        desiredAbilities = {v}
-        notify("Target Set", "Target ability: " .. tostring(v), 2)
-    end,
-})
-
-MiscAbilitySpin:AddButton({
-    Text = "Instant Spin",
-    Func = function()
-        local args = { [1] = (abilitySpinType == "Lucky") }
-        local AbilityService = getKnitService("AbilityService")
-        if AbilityService then
-            local RF = AbilityService:FindFirstChild("RF")
-            if RF then
-                local Roll = RF:FindFirstChild("Roll")
-                if Roll then
-                    safeInvoke(Roll, unpack(args))
-                    notify("Instant Spin", "Ability spin executed! (" .. abilitySpinType .. ")", 2)
+            if yenConnection then return end
+            yenConnection = task.spawn(function()
+                local SeasonService = getKnitService("SeasonService")
+                while autoYen do
+                    if SeasonService then
+                        local RF = SeasonService:FindFirstChild("RF")
+                        if RF then
+                            local RequestRankedReward = RF:FindFirstChild("RequestRankedReward")
+                            if RequestRankedReward then
+                                safeInvoke(RequestRankedReward, 2)
+                            end
+                        end
+                    end
+                    task.wait(autoSpinDelay)
                 end
+            end)
+            notify("Yen", "ENABLED", 2)
+        else
+            if yenConnection then
+                task.cancel(yenConnection)
+                yenConnection = nil
             end
+            notify("Yen", "DISABLED", 2)
         end
-    end,
+    end
 })
 
-MiscRewards:AddButton({
+FarmGroup:AddToggle("AutoAbility", {
+    Text = "Ability Farm",
+    Default = false,
+    Tooltip = "Continuous loop claiming season Ability rewards",
+    Callback = function(v)
+        autoAbility = v
+        if v then
+            if abilityConnection then return end
+            abilityConnection = task.spawn(function()
+                local SeasonService = getKnitService("SeasonService")
+                while autoAbility do
+                    if SeasonService then
+                        local RF = SeasonService:FindFirstChild("RF")
+                        if RF then
+                            local RequestRankedReward = RF:FindFirstChild("RequestRankedReward")
+                            if RequestRankedReward then
+                                safeInvoke(RequestRankedReward, 4)
+                            end
+                        end
+                    end
+                    task.wait(autoSpinDelay)
+                end
+            end)
+            notify("Ability", "ENABLED", 2)
+        else
+            if abilityConnection then
+                task.cancel(abilityConnection)
+                abilityConnection = nil
+            end
+            notify("Ability", "DISABLED", 2)
+        end
+    end
+})
+
+FarmGroup:AddToggle("AutoNormalSpin", {
+    Text = "Normal Spin Farm",
+    Default = false,
+    Tooltip = "Continuous loop claiming season normal rolls",
+    Callback = function(v)
+        autoNormal = v
+        if v then
+            if normalConnection then return end
+            normalConnection = task.spawn(function()
+                local SeasonService = getKnitService("SeasonService")
+                while autoNormal do
+                    if SeasonService then
+                        local RF = SeasonService:FindFirstChild("RF")
+                        if RF then
+                            local RequestRankedReward = RF:FindFirstChild("RequestRankedReward")
+                            if RequestRankedReward then
+                                safeInvoke(RequestRankedReward, 5)
+                            end
+                        end
+                    end
+                    task.wait(autoSpinDelay)
+                end
+            end)
+            notify("Normal Spin", "ENABLED", 2)
+        else
+            if normalConnection then
+                task.cancel(normalConnection)
+                normalConnection = nil
+            end
+            notify("Normal Spin", "DISABLED", 2)
+        end
+    end
+})
+
+local RewardsGroup = Tabs.Misc:AddLeftGroupbox("Claim Rewards & Codes")
+
+RewardsGroup:AddButton({
     Text = "Claim Level Rewards",
     Func = function()
         local LevelService = getKnitService("LevelService")
@@ -2476,10 +2498,10 @@ MiscRewards:AddButton({
                 end
             end
         end
-    end,
+    end
 })
 
-MiscRewards:AddButton({
+RewardsGroup:AddButton({
     Text = "Claim Quest Rewards",
     Func = function()
         local QuestService = getKnitService("QuestService")
@@ -2493,10 +2515,10 @@ MiscRewards:AddButton({
                 end
             end
         end
-    end,
+    end
 })
 
-MiscRewards:AddButton({
+RewardsGroup:AddButton({
     Text = "Redeem All Codes",
     Func = function()
         local function fetchNewCodes()
@@ -2516,7 +2538,7 @@ MiscRewards:AddButton({
                         table.insert(newCodes, code)
                     end
                 end
-                if #newCodes >= 3 then
+                if #newCodes >= 5 then
                     break
                 end
             end
@@ -2524,7 +2546,7 @@ MiscRewards:AddButton({
         end
         local newCodes = fetchNewCodes()
         if #newCodes > 0 then
-            for i, code in pairs(newCodes) do
+            for _, code in pairs(newCodes) do
                 local CodeService = getKnitService("CodeService")
                 if CodeService then
                     local RF = CodeService:FindFirstChild("RF")
@@ -2539,162 +2561,357 @@ MiscRewards:AddButton({
                 end
                 task.wait(0.01)
             end
-            notify("Codes Redeemed", "All codes redeemed!", 3)
+            notify("Codes Redeemed", "Codes process completed!", 3)
         else
-            notify("No Codes", "No codes found!", 3)
+            notify("No Codes", "No new codes found from web!", 3)
         end
-    end,
+    end
 })
 
-MiscShop:AddButton({
+local StyleSpinGroup = Tabs.Misc:AddRightGroupbox("Auto Style Spin")
+
+StyleSpinGroup:AddToggle("AutoStyleSpin", {
+    Text = "Auto Style Spin",
+    Default = false,
+    Tooltip = "Loops rolling style until target style is hit",
+    Callback = function(v)
+        autoSpin = v
+        if v then
+            startAutoSpin()
+        end
+    end
+})
+
+StyleSpinGroup:AddDropdown("StyleSpinType", {
+    Values = {"Normal", "Lucky"},
+    Default = 1,
+    Multi = false,
+    Text = "Spin Type",
+    Callback = function(v)
+        spinType = v
+    end
+})
+
+StyleSpinGroup:AddInput("TargetStyle", {
+    Text = "Target Style",
+    Default = "Sanju",
+    Placeholder = "Sanju",
+    Callback = function(v)
+        desiredStyles = {v}
+        notify("Target Set", "Target style: " .. tostring(v), 2)
+    end
+})
+
+StyleSpinGroup:AddButton({
+    Text = "Instant Spin",
+    Func = function()
+        local args = { [1] = (spinType == "Lucky") }
+        local StyleService = getKnitService("StyleService")
+        if StyleService then
+            local RF = StyleService:FindFirstChild("RF")
+            if RF then
+                local Roll = RF:FindFirstChild("Roll")
+                if Roll then
+                    safeInvoke(Roll, unpack(args))
+                    notify("Instant Spin", "Style spin executed! (" .. spinType .. ")", 2)
+                end
+            end
+        end
+    end
+})
+
+local AbilitySpinGroup = Tabs.Misc:AddRightGroupbox("Auto Ability Spin")
+
+AbilitySpinGroup:AddToggle("AutoAbilitySpin", {
+    Text = "Auto Ability Spin",
+    Default = false,
+    Tooltip = "Loops rolling ability until target ability is hit",
+    Callback = function(v)
+        autoAbilitySpin = v
+        if v then
+            startAutoAbilitySpin()
+        end
+    end
+})
+
+AbilitySpinGroup:AddDropdown("AbilitySpinType", {
+    Values = {"Normal", "Lucky"},
+    Default = 1,
+    Multi = false,
+    Text = "Ability Spin Type",
+    Callback = function(v)
+        abilitySpinType = v
+    end
+})
+
+AbilitySpinGroup:AddInput("TargetAbility", {
+    Text = "Target Ability",
+    Default = "Shield Breaker",
+    Placeholder = "Shield Breaker",
+    Callback = function(v)
+        desiredAbilities = {v}
+        notify("Target Set", "Target ability: " .. tostring(v), 2)
+    end
+})
+
+AbilitySpinGroup:AddButton({
+    Text = "Instant Spin",
+    Func = function()
+        local args = { [1] = (abilitySpinType == "Lucky") }
+        local AbilityService = getKnitService("AbilityService")
+        if AbilityService then
+            local RF = AbilityService:FindFirstChild("RF")
+            if RF then
+                local Roll = RF:FindFirstChild("Roll")
+                if Roll then
+                    safeInvoke(Roll, unpack(args))
+                    notify("Instant Spin", "Ability spin executed! (" .. abilitySpinType .. ")", 2)
+                end
+            end
+        end
+    end
+})
+
+local ShopGroup = Tabs.Misc:AddRightGroupbox("Shop Purchases")
+
+ShopGroup:AddButton({
     Text = "Buy Emote",
     Func = function()
-        local PackService = getKnitService("PackService").RF
-        if PackService then
-            local Open = PackService:FindFirstChild("Open")
+        local PackService = getKnitService("PackService")
+        local RF = PackService and PackService:FindFirstChild("RF")
+        if RF then
+            local Open = RF:FindFirstChild("Open")
             if Open then
                 safeInvoke(Open, "Emote1")
                 notify("Shop", "Emote purchased!", 2)
             end
         end
-    end,
+    end
 })
 
-MiscShop:AddButton({
+ShopGroup:AddButton({
     Text = "Buy Effect",
     Func = function()
-        local PackService = getKnitService("PackService").RF
-        if PackService then
-            local Open = PackService:FindFirstChild("Open")
+        local PackService = getKnitService("PackService")
+        local RF = PackService and PackService:FindFirstChild("RF")
+        if RF then
+            local Open = RF:FindFirstChild("Open")
             if Open then
                 safeInvoke(Open, "ScoreEffect1")
                 notify("Shop", "Effect purchased!", 2)
             end
         end
-    end,
+    end
 })
 
-MiscShop:AddButton({
+ShopGroup:AddButton({
     Text = "Buy Extreme Ball",
     Func = function()
-        local PackService = getKnitService("PackService").RF
-        if PackService then
-            local Open = PackService:FindFirstChild("Open")
+        local PackService = getKnitService("PackService")
+        local RF = PackService and PackService:FindFirstChild("RF")
+        if RF then
+            local Open = RF:FindFirstChild("Open")
             if Open then
                 safeInvoke(Open, "Extreme")
                 notify("Shop", "Extreme ball purchased!", 2)
             end
         end
-    end,
+    end
 })
 
-MiscShop:AddButton({
+ShopGroup:AddButton({
     Text = "Buy Medium Ball",
     Func = function()
-        local PackService = getKnitService("PackService").RF
-        if PackService then
-            local Open = PackService:FindFirstChild("Open")
+        local PackService = getKnitService("PackService")
+        local RF = PackService and PackService:FindFirstChild("RF")
+        if RF then
+            local Open = RF:FindFirstChild("Open")
             if Open then
                 safeInvoke(Open, "Medium")
                 notify("Shop", "Medium ball purchased!", 2)
             end
         end
-    end,
+    end
 })
 
-MiscShop:AddButton({
+ShopGroup:AddButton({
     Text = "Buy Basic Ball",
     Func = function()
-        local PackService = getKnitService("PackService").RF
-        if PackService then
-            local Open = PackService:FindFirstChild("Open")
+        local PackService = getKnitService("PackService")
+        local RF = PackService and PackService:FindFirstChild("RF")
+        if RF then
+            local Open = RF:FindFirstChild("Open")
             if Open then
                 safeInvoke(Open, "Basic")
                 notify("Shop", "Basic ball purchased!", 2)
             end
         end
-    end,
+    end
 })
 
-MiscShop:AddButton({
-    Text = "Rejoin Server",
+-- -----------------------------------------------------------------------------
+-- TAB 5: GAME JOIN
+-- -----------------------------------------------------------------------------
+local GameModesLeft = Tabs.GameJoin:AddLeftGroupbox("Game Modes")
+
+GameModesLeft:AddButton({
+    Text = "Chaos Mode",
     Func = function()
-        TeleportService:Teleport(game.PlaceId)
-    end,
-})
-
--- Game Join Tab Groupboxes
-local JoinGroup = Tabs.GameJoin:AddGroupbox({ Side = "Left", Name = "Game Modes", IconName = "swords" })
-
-local function requestGameMode(modeName, displayLabel)
-    local PartyService = getKnitService("PartyService").RF
-    if PartyService then
-        local RequestTeleport = PartyService:FindFirstChild("RequestTeleport")
-        if RequestTeleport then
-            safeInvoke(RequestTeleport, modeName)
-            notify("Joining", displayLabel .. "...", 2)
+        local PartyService = getKnitService("PartyService")
+        local RF = PartyService and PartyService:FindFirstChild("RF")
+        if RF then
+            local RequestTeleport = RF:FindFirstChild("RequestTeleport")
+            if RequestTeleport then
+                safeInvoke(RequestTeleport, "ChaosMode")
+                notify("Joining", "Chaos Mode...", 2)
+            end
         end
     end
-end
-
-JoinGroup:AddButton({ Text = "Chaos Mode", Func = function() requestGameMode("ChaosMode", "Chaos Mode") end })
-JoinGroup:AddButton({ Text = "1v1 Mini Map", Func = function() requestGameMode("OnesMini", "1v1 Mini Map") end })
-JoinGroup:AddButton({ Text = "2v2 Ranked", Func = function() requestGameMode("Twos", "2v2 Ranked") end })
-JoinGroup:AddButton({ Text = "3v3 Ranked", Func = function() requestGameMode("Threes", "3v3 Ranked") end })
-JoinGroup:AddButton({ Text = "4v4 Ranked", Func = function() requestGameMode("Fours", "4v4 Ranked") end })
-JoinGroup:AddButton({ Text = "6v6 Ranked", Func = function() requestGameMode("Sixes", "6v6 Ranked") end })
-JoinGroup:AddButton({ Text = "Training", Func = function() requestGameMode("Training", "Training") end })
-
--- Changelogs Tab Groupboxes
-local ChangeLogLeft = Tabs.Changelogs:AddGroupbox({ Side = "Left", Name = "Changelogs", IconName = "history" })
-local ChangeLogRight = Tabs.Changelogs:AddGroupbox({ Side = "Right", Name = "Version Info", IconName = "info" })
-
-ChangeLogLeft:AddLabel([[ADDING VOLLEYBALLLEGENDS
-
-[+] VBL License Key Gateway (+24h HWID Auth)
-[+] Universal Executor Shims (Delta, Solara, Codex, Wave)
-[+] Unified Namecall Hook (Collision-Free Engine)
-[+] Shift Lock Jump Fix (Pre-Jump Direction Lock)
-[+] Max Charge Special (Ronin)
-[+] Sanju Tilt
-[+] Max Serve
-[-] Stripped Premium Spikes (Free Edition)
-[-] Cleaned Visual Clutter (ScoreEffect, ESP, PlayerCards)]], true)
-
-ChangeLogRight:AddLabel("Hub: RZO HUB\nTarget: Volleyball Legends\nBranch: Free Edition\nEngine: Obsidian UI\nPlatform: Universal Luau", true)
-ChangeLogRight:AddDivider()
-ChangeLogRight:AddButton({
-    Text = "Copy Discord Link",
-    Func = function()
-        setClipboardSafe("https://discord.gg/vNExQNRK3")
-        notify("Discord", "Discord invite link copied to clipboard!", 2)
-    end,
 })
 
--- UI Settings Tab Groupboxes
-local MenuGroup = Tabs["UI Settings"]:AddGroupbox({ Side = "Left", Name = "Menu Controls", IconName = "wrench" })
-local ActionGroup = Tabs["UI Settings"]:AddGroupbox({ Side = "Right", Name = "Emergency & Actions", IconName = "alert-triangle" })
-
-local function stableCleanup()
-    pcall(disableRedirectSpike)
-    pcall(disableSanjuTilt)
-    pcall(disableMaxCharge)
-    pcall(disableMaxServe)
-    pcall(disableDesync)
-    pcall(disableAutoReceive)
-    pcall(disableHitEffect)
-    pcall(disablePlayerCard)
-    if bodyVelocity then
-        pcall(function() bodyVelocity:Destroy() end)
-        bodyVelocity = nil
+GameModesLeft:AddButton({
+    Text = "1v1 Mini Map",
+    Func = function()
+        local PartyService = getKnitService("PartyService")
+        local RF = PartyService and PartyService:FindFirstChild("RF")
+        if RF then
+            local RequestTeleport = RF:FindFirstChild("RequestTeleport")
+            if RequestTeleport then
+                safeInvoke(RequestTeleport, "OnesMini")
+                notify("Joining", "1v1 Mini Map...", 2)
+            end
+        end
     end
-    removeHitboxes()
-    for player in pairs(espHighlights) do pcall(removeESP, player) end
-    for player in pairs(espPlayers) do pcall(removeESP2, player) end
-end
+})
 
-ActionGroup:AddButton({
-    Text = "Panic Mode (Disable All)",
+GameModesLeft:AddButton({
+    Text = "2v2 Ranked",
+    Func = function()
+        local PartyService = getKnitService("PartyService")
+        local RF = PartyService and PartyService:FindFirstChild("RF")
+        if RF then
+            local RequestTeleport = RF:FindFirstChild("RequestTeleport")
+            if RequestTeleport then
+                safeInvoke(RequestTeleport, "Twos")
+                notify("Joining", "2v2 Ranked...", 2)
+            end
+        end
+    end
+})
+
+GameModesLeft:AddButton({
+    Text = "3v3 Ranked",
+    Func = function()
+        local PartyService = getKnitService("PartyService")
+        local RF = PartyService and PartyService:FindFirstChild("RF")
+        if RF then
+            local RequestTeleport = RF:FindFirstChild("RequestTeleport")
+            if RequestTeleport then
+                safeInvoke(RequestTeleport, "Threes")
+                notify("Joining", "3v3 Ranked...", 2)
+            end
+        end
+    end
+})
+
+local GameModesRight = Tabs.GameJoin:AddRightGroupbox("More Modes")
+
+GameModesRight:AddButton({
+    Text = "4v4 Ranked",
+    Func = function()
+        local PartyService = getKnitService("PartyService")
+        local RF = PartyService and PartyService:FindFirstChild("RF")
+        if RF then
+            local RequestTeleport = RF:FindFirstChild("RequestTeleport")
+            if RequestTeleport then
+                safeInvoke(RequestTeleport, "Fours")
+                notify("Joining", "4v4 Ranked...", 2)
+            end
+        end
+    end
+})
+
+GameModesRight:AddButton({
+    Text = "6v6 Ranked",
+    Func = function()
+        local PartyService = getKnitService("PartyService")
+        local RF = PartyService and PartyService:FindFirstChild("RF")
+        if RF then
+            local RequestTeleport = RF:FindFirstChild("RequestTeleport")
+            if RequestTeleport then
+                safeInvoke(RequestTeleport, "Sixes")
+                notify("Joining", "6v6 Ranked...", 2)
+            end
+        end
+    end
+})
+
+GameModesRight:AddButton({
+    Text = "Training",
+    Func = function()
+        local PartyService = getKnitService("PartyService")
+        local RF = PartyService and PartyService:FindFirstChild("RF")
+        if RF then
+            local RequestTeleport = RF:FindFirstChild("RequestTeleport")
+            if RequestTeleport then
+                safeInvoke(RequestTeleport, "Training")
+                notify("Joining", "Training...", 2)
+            end
+        end
+    end
+})
+
+-- -----------------------------------------------------------------------------
+-- TAB 6: UI SETTINGS
+-- -----------------------------------------------------------------------------
+local LicenseStatusGroup = Tabs["UI Settings"]:AddLeftGroupbox("License Management")
+
+LicenseStatusGroup:AddButton({
+    Text = "Copy My Key",
+    Func = function()
+        local key = currentLicenseData and currentLicenseData.license_key
+        if not key then
+            pcall(function()
+                if isfile and isfile(AUTH_CONFIG.KeyFile) then
+                    key = readfile(AUTH_CONFIG.KeyFile)
+                end
+            end)
+        end
+        if key then
+            copyToClipboard(key)
+            notify("Copied", "License key copied to clipboard!", 2)
+        else
+            notify("Error", "No active license key found.", 2)
+        end
+    end
+})
+
+LicenseStatusGroup:AddButton({
+    Text = "Open Web Dashboard (Copy)",
+    Func = function()
+        copyToClipboard(AUTH_CONFIG.Domain .. "/dashboard.php")
+        notify("Dashboard", "URL copied to clipboard!", 2)
+    end
+})
+
+LicenseStatusGroup:AddButton({
+    Text = "Clear Saved Key (Logout)",
+    Func = function()
+        pcall(function()
+            if delfile and isfile and isfile(AUTH_CONFIG.KeyFile) then
+                delfile(AUTH_CONFIG.KeyFile)
+            end
+        end)
+        notify("License Cleared", "Saved key deleted! Locking hub...", 2)
+        task.wait(0.5)
+        lockFeatureTabs()
+    end
+})
+
+local SafetyGroup = Tabs["UI Settings"]:AddLeftGroupbox("Safety & Lifecycle")
+
+SafetyGroup:AddButton({
+    Text = "Panic (Disable All)",
     Func = function()
         removeHitboxes()
         silentSpikeEnabled = false
@@ -2708,14 +2925,24 @@ ActionGroup:AddButton({
         akariDashEnabled = false
         espEnabled = false
         espJumpEnabled = false
+        autoLucky = false
+        autoYen = false
+        autoAbility = false
+        autoNormal = false
         autoSpin = false
         autoAbilitySpin = false
+        infiniteLuckyEnabled = false
         hitEffectEnabled = false
         playerCardEnabled = false
         stopBallVisible = false
         aimVisible = false
         maxServeEnabled = false
         leadFeetEnabled = false
+        if luckySpinConnection then task.cancel(luckySpinConnection) luckySpinConnection = nil end
+        if yenConnection then task.cancel(yenConnection) yenConnection = nil end
+        if abilityConnection then task.cancel(abilityConnection) abilityConnection = nil end
+        if normalConnection then task.cancel(normalConnection) normalConnection = nil end
+        if infiniteLuckyConnection then task.cancel(infiniteLuckyConnection) infiniteLuckyConnection = nil end
         if spikeButton then spikeButton.Visible = false end
         if newSpikeButton then newSpikeButton.Visible = false end
         if dashButton then dashButton.Visible = false end
@@ -2736,173 +2963,63 @@ ActionGroup:AddButton({
         disableMaxServe()
         for player in pairs(espHighlights) do removeESP(player) end
         for player in pairs(espPlayers) do removeESP2(player) end
-
-        -- Sync UI toggles
-        for _, toggleKey in ipairs({
-            "sanju", "maxcharge",
-            "antilag", "desync", "autoreceive", "akaridash",
-            "maxserve", "airmove",
-            "autoshiftlock", "autostyle", "autoabilityspin"
-        }) do
-            if Toggles[toggleKey] and Toggles[toggleKey].SetValue then
-                Toggles[toggleKey]:SetValue(false)
-            end
-        end
-
         notify("Panic Mode", "All features disabled", 3)
-    end,
+    end
 })
 
-ActionGroup:AddButton({
-    Text = "Unload UI & Cleanup",
+SafetyGroup:AddButton({
+    Text = "Unload UI",
     Func = function()
         stableCleanup()
-        Library:Unload()
-    end,
+        pcall(function() Library:Unload() end)
+    end
 })
 
-ActionGroup:AddButton({
-    Text = "Toggle Menu (Show/Hide)",
-    Func = function()
-        Library:Toggle()
-    end,
-})
-
-ActionGroup:AddDivider()
-ActionGroup:AddLabel("RZO HUB - Volleyball Legends\nUI migrated to Obsidian UI Library\nPress RightControl or custom bind to toggle UI", true)
-
-MenuGroup:AddToggle("KeybindMenuOpen", {
-    Default = false,
-    Text = "Open Keybind Menu",
-    Callback = function(value)
-        if Library and Library.KeybindFrame then
-            Library.KeybindFrame.Visible = value
-        end
-    end,
-})
-
-MenuGroup:AddToggle("ShowCustomCursor", {
-    Text = "Custom Cursor",
-    Default = Library.ShowCustomCursor,
-    Callback = function(Value)
-        Library.ShowCustomCursor = Value
-    end,
-})
-
-MenuGroup:AddToggle("AlwaysOnTop", {
-    Text = "Always On Top",
-    Default = Window.AlwaysOnTop,
-    Callback = function(Value)
-        Window:SetAlwaysOnTop(Value)
-    end,
-})
-
-MenuGroup:AddDropdown("NotificationSide", {
-    Values = { "Left", "Right" },
-    Default = "Right",
-    Text = "Notification Side",
-    Callback = function(Value)
-        Library:SetNotifySide(Value)
-    end,
-})
-
-MenuGroup:AddDropdown("DPIDropdown", {
-    Values = { "50%", "75%", "100%", "125%", "150%", "175%", "200%" },
-    Default = "100%",
-    Text = "DPI Scale",
-    Callback = function(Value)
-        Value = Value:gsub("%%", "")
-        local DPI = tonumber(Value)
-        if DPI then
-            Library:SetDPIScale(DPI)
-        end
-    end,
-})
-
-MenuGroup:AddSlider("UICornerSlider", {
-    Text = "Corner Radius",
-    Default = Library.CornerRadius,
-    Min = 0,
-    Max = 20,
-    Rounding = 0,
-    Callback = function(value)
-        Window:SetCornerRadius(value)
-    end,
-})
-
-MenuGroup:AddDivider()
-MenuGroup:AddLabel("Menu Keybind"):AddKeyPicker("MenuKeybind", { Default = "RightControl", NoUI = true, Text = "Menu keybind" })
-
+local MenuGroup = Tabs["UI Settings"]:AddLeftGroupbox("Menu Configuration")
+MenuGroup:AddLabel("Menu Keybind"):AddKeyPicker("MenuKeybind", { Default = "RightShift", NoUI = true, Text = "Menu keybind" })
 Library.ToggleKeybind = Options.MenuKeybind
 
--- Theme & Config Managers
 ThemeManager:SetLibrary(Library)
 SaveManager:SetLibrary(Library)
-
 SaveManager:IgnoreThemeSettings()
 SaveManager:SetIgnoreIndexes({ "MenuKeybind" })
-
-ThemeManager:SetFolder("RzoHub")
-SaveManager:SetFolder("RzoHub/VolleyballLegends")
-
+ThemeManager:SetFolder("RZOHub")
+SaveManager:SetFolder("RZOHub/volleyball-legends")
 SaveManager:BuildConfigSection(Tabs["UI Settings"])
-ThemeManager:ApplyToTab(Tabs["UI Settings"], "palette")
-
+ThemeManager:ApplyToTab(Tabs["UI Settings"])
 SaveManager:LoadAutoloadConfig()
 
-pcall(function()
-    if Library then
-        if Library.KeybindFrame then
-            Library.KeybindFrame.Visible = false
-        end
-        if Library.SetWatermarkVisibility then
-            Library:SetWatermarkVisibility(false)
-        end
-    end
-end)
-
--- Force open Obsidian menu on load
-    task.defer(function()
-        task.wait(0.25)
-        pcall(function()
-            if Library and Library.Toggle then
-                Library:Toggle(true)
-            end
-        end)
-    end)
-
-    notify("RZO HUB", "ADDING VOLLEYBALLLEGENDS - Loaded successfully!", 3)
-end
-
--- Launch VBL License Authentication Gateway asynchronously
+-- =============================================================================
+-- STARTUP LICENSE VERIFICATION (AUTO-LOGIN OR GATE)
+-- =============================================================================
 task.spawn(function()
-    print("[RZO HUB] Initializing VBL client gateway...")
-    local ok, err = pcall(function()
-        launchKeyGateway(function(key, data)
-            local hubOk, hubErr = pcall(LoadMainHub)
-            if not hubOk then
-                warn("[RZO HUB ERROR] Failed to load main hub:", tostring(hubErr))
-                local parent = getSafeGuiParent()
-                if parent then
-                    local fallbackGui = Instance.new("ScreenGui")
-                    fallbackGui.Name = "RzoHub_ErrorNotice"
-                    fallbackGui.DisplayOrder = 999999
-                    fallbackGui.Parent = parent
-                    local label = Instance.new("TextLabel")
-                    label.Size = UDim2.new(0, 420, 0, 90)
-                    label.Position = UDim2.new(0.5, -210, 0.2, 0)
-                    label.BackgroundColor3 = Color3.fromRGB(35, 10, 15)
-                    label.TextColor3 = Color3.fromRGB(255, 120, 120)
-                    label.Text = "[RZO HUB LOAD ERROR]\n" .. tostring(hubErr)
-                    label.TextWrapped = true
-                    label.Font = Enum.Font.Code
-                    label.TextSize = 12
-                    label.Parent = fallbackGui
-                end
-            end
-        end)
+    local savedKey = nil
+    pcall(function()
+        if isfile and isfile(AUTH_CONFIG.KeyFile) then
+            savedKey = readfile(AUTH_CONFIG.KeyFile)
+        end
     end)
-    if not ok then
-        warn("[RZO HUB CRITICAL ERROR] Gateway failed to launch:", tostring(err))
+    if not savedKey and getgenv().RZO_KEY then
+        savedKey = getgenv().RZO_KEY
     end
+
+    if savedKey and savedKey:gsub("%s+", "") ~= "" then
+        notify("RZO HUB", "Checking saved VBL license...", 2)
+        local valid, code, result = verifyLicenseKey(savedKey)
+        if valid then
+            notify("RZO HUB", "Welcome back, " .. tostring(result.user) .. "!\nExpires: " .. tostring(result.expires_at), 4)
+            unlockFeatureTabs(result)
+            return
+        else
+            pcall(function()
+                if delfile and isfile and isfile(AUTH_CONFIG.KeyFile) then
+                    delfile(AUTH_CONFIG.KeyFile)
+                end
+            end)
+            notify("License Expired", tostring(result or code) .. "\nPlease enter a fresh 24h key.", 4)
+        end
+    end
+
+    -- Default: Lock feature tabs until key is verified
+    lockFeatureTabs()
 end)
